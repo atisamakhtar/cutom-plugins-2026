@@ -243,3 +243,52 @@
   font-size:18px;
   color:#111827;
 }
+
+/* Stop actions */
+.fgbw__loc-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.fgbw__icon-btn { display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer; padding: 6px;
+  color: #6b7280; border-radius: 6px; transition: all 0.2s;
+}
+.fgbw__icon-btn:hover { color: #111; background: #f3f4f6; }
+.fgbw__icon-svg { width: 20px; height: 20px; }
+
+/* Modal */
+.fgbw__modal-backdrop {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5); z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+}
+.fgbw__modal-backdrop.is-visible { opacity: 1; pointer-events: auto; }
+
+.fgbw__modal {
+  background: #fff; width: 90%; max-width: 500px;
+  border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+  transform: scale(0.95); transition: transform 0.3s ease;
+  overflow: hidden;
+}
+.fgbw__modal-backdrop.is-visible .fgbw__modal { transform: scale(1); }
+
+.fgbw__modal-head {
+  padding: 16px 20px; border-bottom: 1px solid #e5e7eb;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.fgbw__modal-title { font-weight: 700; font-size: 18px; color: #111; }
+.fgbw__modal-close { background: none; border: none; cursor: pointer; color: #9ca3af; padding: 4px; border-radius: 4px; font-size: 24px; line-height: 1; }
+.fgbw__modal-close:hover { color: #111; background: #f3f4f6; }
+
+.fgbw__modal-body { padding: 20px; }
+.fgbw__modal-foot {
+  padding: 16px 20px; border-top: 1px solid #e5e7eb;
+  display: flex; justify-content: flex-end; gap: 10px; background: #f9fafb;
+}
+
+.fgbw__modal-row { margin-bottom: 16px; }
+.fgbw__modal-row:last-child { margin-bottom: 0; }
+.fgbw__modal-row label { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-weight: 500; color: #374151; }
+.fgbw__modal-input, .fgbw__modal-textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; outline: none; transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.fgbw__modal-input:focus, .fgbw__modal-textarea:focus { border-color: #111; }

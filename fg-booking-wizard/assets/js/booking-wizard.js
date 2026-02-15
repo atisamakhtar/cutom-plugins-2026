@@ -80,10 +80,42 @@
 
     fgbwGooglePromise = new Promise((resolve, reject) => {
 
+      if (!FGBW.googlePlacesKey && !window.google) {
+        console.warn("FGBW: Google Places API Key is missing.");
+        reject("Missing API Key");
+        return;
+      }
+
       const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
 
       if (existingScript) {
-        existingScript.addEventListener('load', () => resolve());
+        if (window.google && window.google.maps && window.google.maps.places) {
+          resolve();
+          return;
+        }
+
+        // Poll for load completion in case event already fired
+        let attempts = 0;
+        const timer = setInterval(() => {
+          attempts++;
+          if (window.google && window.google.maps && window.google.maps.places) {
+            clearInterval(timer);
+            resolve();
+          }
+          if (attempts > 50) { // ~10 seconds
+            clearInterval(timer);
+            // Don't reject, maybe it will load later or user doesn't need places immediately?
+            // But we can't resolve really.
+          }
+        }, 200);
+
+        // Also listen for load event
+        existingScript.addEventListener('load', () => {
+          if (window.google && window.google.maps && window.google.maps.places) {
+            clearInterval(timer);
+            resolve();
+          }
+        });
         return;
       }
 
@@ -97,7 +129,7 @@
       const script = document.createElement("script");
       script.src =
         "https://maps.googleapis.com/maps/api/js?key=" +
-        encodeURIComponent(FGBW.googlePlacesKey) +
+        encodeURIComponent(FGBW.googlePlacesKey || '') +
         "&libraries=places&callback=" +
         callbackName;
 
@@ -114,14 +146,89 @@
     return fgbwGooglePromise;
   }
 
+  // ---------- Modal Component ----------
+  class FGBWModal {
+    constructor() {
+      this.init();
+    }
+    init() {
+      if (document.querySelector('.fgbw__modal-backdrop')) {
+        this.$el = $('.fgbw__modal-backdrop');
+        return;
+      }
+      const html = `
+        <div class="fgbw__modal-backdrop">
+          <div class="fgbw__modal">
+             <div class="fgbw__modal-head">
+               <div class="fgbw__modal-title">Additional Info</div>
+               <button type="button" class="fgbw__modal-close">&times;</button>
+             </div>
+             <div class="fgbw__modal-body">
+               <div class="fgbw__modal-row">
+                  <label>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Passenger Count
+                  </label>
+                  <input type="number" class="fgbw__modal-input fgbw__modal-pax" min="1" value="1">
+               </div>
+               <div class="fgbw__modal-row">
+                  <label>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Note
+                  </label>
+                  <textarea class="fgbw__modal-textarea fgbw__modal-note" rows="3"></textarea>
+               </div>
+             </div>
+             <div class="fgbw__modal-foot">
+               <button type="button" class="fgbw__btn fgbw__btn--ghost fgbw__modal-close-btn">Close</button>
+               <button type="button" class="fgbw__btn fgbw__modal-save fgbw__btn--primary" style="background:#111;color:#fff;border-color:#111;">Save</button>
+             </div>
+          </div>
+        </div>
+      `;
+      $('body').append(html);
+      this.$el = $('.fgbw__modal-backdrop');
+      this.bind();
+    }
+    bind() {
+      const close = () => this.close();
+      this.$el.on('click', '.fgbw__modal-close, .fgbw__modal-close-btn', close);
+      this.$el.on('click', (e) => {
+        if ($(e.target).is('.fgbw__modal-backdrop')) close();
+      });
+      this.$el.on('click', '.fgbw__modal-save', () => {
+        if (this.onSave) {
+          const pax = parseInt(this.$el.find('.fgbw__modal-pax').val()) || 1;
+          const note = this.$el.find('.fgbw__modal-note').val().trim();
+          this.onSave({ pax, note });
+        }
+        close();
+      });
+    }
+    open({ title, pax, note, onSave }) {
+      this.$el.find('.fgbw__modal-title').text(title || 'Additional Info');
+      this.$el.find('.fgbw__modal-pax').val(pax || 1);
+      this.$el.find('.fgbw__modal-note').val(note || '');
+      this.onSave = onSave;
+      this.$el.addClass('is-visible');
+    }
+    close() {
+      this.$el.removeClass('is-visible');
+      this.onSave = null;
+    }
+  }
+
+  const fgbwModal = new FGBWModal();
+
   // ---------- LocationBlock Component ----------
   class LocationBlock {
-    constructor({ mountEl, type, tripSegment, index = null, onChange }) {
+    constructor({ mountEl, type, tripSegment, index = null, onChange, onDelete = null }) {
       this.mountEl = mountEl;
       this.type = type; // pickup | dropoff | stop
       this.tripSegment = tripSegment; // oneway | round_pickup | round_return
       this.index = index; // stop index
       this.onChange = onChange;
+      this.onDelete = onDelete;
 
       this.state = {
         mode: "address", // address | airport
@@ -130,6 +237,8 @@
         airline: null,   // { iata_code, airline_name }
         flight: "",
         noFlightInfo: false,
+        passenger_count: 1,
+        note: ""
       };
 
       this.id = uid(`loc_${tripSegment}_${type}`);
@@ -140,10 +249,26 @@
 
     render() {
       const title = this.type === "pickup" ? "Pick-Up" : this.type === "dropoff" ? "Drop-Off" : `Stop ${this.index + 1}`;
+
+      let actionsHtml = "";
+      if (this.type === "stop") {
+        actionsHtml = `
+          <div class="fgbw__loc-actions">
+           <button type="button" class="fgbw__icon-btn fgbw__edit-stop" title="Edit">
+             <i class="fa fa-edit"></i>
+           </button>
+           <button type="button" class="fgbw__icon-btn fgbw__del-stop" title="Delete">
+             <i class="fa fa-trash"></i>
+           </button>
+         </div>
+        `;
+      }
+
       const html = `
         <div class="fgbw__loc" data-loc-id="${this.id}">
           <div class="fgbw__loc-head">
             <div class="fgbw__loc-title">${title}</div>
+            ${actionsHtml}
             <div class="fgbw__loc-modes" role="tablist">
               <button type="button" class="fgbw__loc-mode is-active" data-mode="address">Address</button>
               <button type="button" class="fgbw__loc-mode" data-mode="airport">Airport</button>
@@ -196,7 +321,7 @@
             </div>
           </div>
         </div>
-      `;
+        `;
       this.mountEl.innerHTML = html;
       this.$root = $(this.mountEl).find(`[data-loc-id="${this.id}"]`);
     }
@@ -262,15 +387,39 @@
           this.hideDropdown("airline");
         }
       });
+
+      // Stop Actions
+      this.$root.on('click', '.fgbw__del-stop', () => {
+        if (this.onDelete) {
+          // e.g. sweetalert or standard confirm
+          if (confirm("Are you sure you want to remove this stop?")) {
+            this.onDelete();
+          }
+        }
+      });
+
+      this.$root.on('click', '.fgbw__edit-stop', () => {
+        console.log("Edit stop clicked", this.index);
+        fgbwModal.open({
+          title: `Additional Stop ${this.index + 1} Info`,
+          pax: this.state.passenger_count,
+          note: this.state.note,
+          onSave: (data) => {
+            this.state.passenger_count = data.pax;
+            this.state.note = data.note;
+            this.emit();
+          }
+        });
+      });
     }
 
     setMode(mode) {
       this.state.mode = mode;
       this.$root.find(".fgbw__loc-mode").removeClass("is-active");
-      this.$root.find(`.fgbw__loc-mode[data-mode="${mode}"]`).addClass("is-active");
+      this.$root.find(`.fgbw__loc - mode[data - mode="${mode}"]`).addClass("is-active");
 
-      this.$root.find(`[data-pane="address"]`).toggleClass("is-hidden", mode !== "address");
-      this.$root.find(`[data-pane="airport"]`).toggleClass("is-hidden", mode !== "airport");
+      this.$root.find(`[data - pane= "address"]`).toggleClass("is-hidden", mode !== "address");
+      this.$root.find(`[data - pane= "airport"]`).toggleClass("is-hidden", mode !== "airport");
 
       // Reset mode-specific state (optional)
       if (mode === "address") {
@@ -340,7 +489,7 @@
         return;
       }
 
-      const input = this.$root.find(".fgbw__address-input")[0];
+      const input = this.$root.find(".fgbw__address")[0];
       if (!input) return;
 
       const autocomplete = new google.maps.places.Autocomplete(input, {
@@ -361,7 +510,7 @@
     }
 
     dropdownEl(kind) {
-      return this.$root.find(`[data-dd="${kind}"]`);
+      return this.$root.find(`[data - dd= "${kind}"]`);
     }
 
     showDropdown(kind, items, onPick) {
@@ -373,7 +522,7 @@
 
       const html = items
         .slice(0, 8)
-        .map((it, i) => `<div class="fgbw__dd-item" data-idx="${i}">${it.label}</div>`)
+        .map((it, i) => `< div class="fgbw__dd-item" data - idx="${i}" > ${it.label}</div > `)
         .join("");
 
       $dd.removeClass("is-hidden").html(html);
@@ -400,7 +549,7 @@
         const items = (res && res.data && res.data.items) ? res.data.items : [];
         const mapped = items.map((a) => ({
           value: a,
-          label: `${a.airport_name} (${a.iata_code}) - ${a.city || ""} ${a.country_name || ""}`.trim(),
+          label: `${a.airport_name} (${a.iata_code}) - ${a.city || ""} ${a.country_name || ""} `.trim(),
         }));
 
         this.showDropdown("airport", mapped, (chosen) => {
@@ -452,6 +601,8 @@
         out.flight = this.state.noFlightInfo ? "" : this.state.flight;
         out.no_flight_info = this.state.noFlightInfo;
       }
+      out.passenger_count = this.state.passenger_count;
+      out.note = this.state.note;
       return out;
     }
 
@@ -467,7 +618,7 @@
       if (!$result.length) return;
 
       $result.html(`
-        <div class="fgbw-flight-card">
+        < div class="fgbw-flight-card" >
             <div class="fgbw-flight-card__top">
                 <strong>${data.airline} (${data.flight_iata})</strong>
                 <span class="fgbw-flight-badge">
@@ -723,6 +874,7 @@
             this.state.trip.return.stops[idx] = val;
           }
         },
+        onDelete: () => this.removeStop(segKey, idx)
       });
 
       this.blocks[segKey].stops.push(block);
@@ -732,6 +884,33 @@
         this.state.trip.pickup.stops[idx] = block.getValue();
       } else {
         this.state.trip.return.stops[idx] = block.getValue();
+      }
+    }
+
+    removeStop(segKey, idx) {
+      const stops = this.blocks[segKey].stops;
+      if (!stops[idx]) return;
+
+      // Remove DOM
+      stops[idx].mountEl.remove();
+
+      // Remove from array
+      stops.splice(idx, 1);
+
+      // Re-index remaining stops
+      stops.forEach((blk, i) => {
+        blk.index = i;
+        blk.render();
+        blk.bind();
+        blk.initAddressAutocomplete(); // Need to re-init autocomplete after re-render!
+      });
+
+      // Update State
+      const currentVals = stops.map(b => b.getValue());
+      if (segKey === "oneway" || segKey === "round_pickup") {
+        this.state.trip.pickup.stops = currentVals;
+      } else {
+        this.state.trip.return.stops = currentVals;
       }
     }
 
@@ -974,37 +1153,37 @@
     $root.each((_, el) => new BookingWizard($(el)));
   });
 
-  document.querySelector('.fgbw-confirm-btn').addEventListener('click', function () {
+  // document.querySelector('.fgbw-confirm-btn').addEventListener('click', function () {
 
-    const airlineIata = document.querySelector('#airline_iata').value;
-    const flightNumber = document.querySelector('#flight_number').value;
+  //   const airlineIata = document.querySelector('#airline_iata').value;
+  //   const flightNumber = document.querySelector('#flight_number').value;
 
-    if (!airlineIata || !flightNumber) {
-      alert("Please enter airline and flight number");
-      return;
-    }
+  //   if (!airlineIata || !flightNumber) {
+  //     alert("Please enter airline and flight number");
+  //     return;
+  //   }
 
-    fetch(fgbw_ajax.ajax_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        action: 'fgbw_fetch_flight',
-        _wpnonce: fgbw_ajax.nonce,
-        airline_iata: airlineIata,
-        flight_number: flightNumber
-      })
-    })
-      .then(res => res.json())
-      .then(response => {
+  //   fetch(fgbw_ajax.ajax_url, {
+  //     method: 'POST',
+  //     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  //     body: new URLSearchParams({
+  //       action: 'fgbw_fetch_flight',
+  //       _wpnonce: fgbw_ajax.nonce,
+  //       airline_iata: airlineIata,
+  //       flight_number: flightNumber
+  //     })
+  //   })
+  //     .then(res => res.json())
+  //     .then(response => {
 
-        if (!response.success) {
-          alert(response.data.message);
-          return;
-        }
+  //       if (!response.success) {
+  //         alert(response.data.message);
+  //         return;
+  //       }
 
-        renderFlightCard(response.data);
-      });
-  });
+  //       renderFlightCard(response.data);
+  //     });
+  // });
 
   // function renderFlightCard(data) {
 
