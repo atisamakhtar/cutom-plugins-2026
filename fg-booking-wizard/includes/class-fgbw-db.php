@@ -1,13 +1,16 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-class FGBW_DB {
-    public static function table_name(): string {
+class FGBW_DB
+{
+    public static function table_name(): string
+    {
         global $wpdb;
         return $wpdb->prefix . 'fg_bookings';
     }
 
-    public static function create_tables(): void {
+    public static function create_tables(): void
+    {
         global $wpdb;
         $table = self::table_name();
         $charset_collate = $wpdb->get_charset_collate();
@@ -35,7 +38,8 @@ class FGBW_DB {
         dbDelta($sql);
     }
 
-    public static function insert_booking(array $row): int {
+    public static function insert_booking(array $row): int
+    {
         global $wpdb;
 
         $table = self::table_name();
@@ -47,10 +51,71 @@ class FGBW_DB {
         $row = array_merge($defaults, $row);
 
         $ok = $wpdb->insert($table, $row, [
-            '%s','%s','%s','%s','%s','%s','%d','%s','%s','%s','%s'
+            '%s',
+            '%s',
+            '%s',
+            '%s',
+            '%s',
+            '%s',
+            '%d',
+            '%s',
+            '%s',
+            '%s',
+            '%s'
         ]);
 
         if (!$ok) return 0;
         return (int)$wpdb->insert_id;
+    }
+
+    public static function create_airports_table(): void
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'fg_airports';
+        $charset_collate = $wpdb->get_charset_collate();
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+        $sql = "CREATE TABLE $table (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    airport_name VARCHAR(255),
+    city VARCHAR(255),
+    country VARCHAR(255),
+    iata_code VARCHAR(10),
+    icao_code VARCHAR(10),
+    airport_type VARCHAR(50),
+    lat DECIMAL(10,6),
+    lng DECIMAL(10,6),
+    KEY iata (iata_code),
+    KEY city (city),
+    KEY type (airport_type)
+)";
+
+        dbDelta($sql);
+    }
+
+    public static function create_airlines_table(): void
+    {
+
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'fg_airlines';
+        $charset_collate = $wpdb->get_charset_collate();
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+        $sql = "CREATE TABLE $table (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        airline_name VARCHAR(255),
+        iata_code VARCHAR(10),
+        icao_code VARCHAR(10),
+        country VARCHAR(255),
+        active TINYINT DEFAULT 1,
+        KEY iata (iata_code),
+        KEY name (airline_name)
+    ) $charset_collate;";
+
+        dbDelta($sql);
     }
 }

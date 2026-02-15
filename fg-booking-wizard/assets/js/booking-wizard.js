@@ -36,30 +36,82 @@
   }
 
   // ---------- Google Loader ----------
-  let googleLoaded = false;
-  function loadGooglePlacesIfNeeded() {
-    if (googleLoaded) return Promise.resolve();
-    if (!FGBW.googlePlacesKey) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      if (window.google && window.google.maps && window.google.maps.places) {
-        googleLoaded = true;
-        resolve();
+  // let googleLoaded = false;
+  // function loadGooglePlacesIfNeeded() {
+  //   if (googleLoaded) return Promise.resolve();
+  //   if (!FGBW.googlePlacesKey) return Promise.resolve();
+  //   return new Promise((resolve, reject) => {
+  //     if (window.google && window.google.maps && window.google.maps.places) {
+  //       googleLoaded = true;
+  //       resolve();
+  //       return;
+  //     }
+  //     const cbName = "fgbwGoogleInit_" + uid("cb");
+  //     window[cbName] = () => {
+  //       googleLoaded = true;
+  //       resolve();
+  //       try { delete window[cbName]; } catch (e) { }
+  //     };
+  //     const s = document.createElement("script");
+  //     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+  //       FGBW.googlePlacesKey
+  //     )}&libraries=places&callback=${cbName}`;
+  //     s.async = true;
+  //     s.onerror = reject;
+  //     document.head.appendChild(s);
+  //   });
+  // }
+
+  // ==============================
+  // SAFE GOOGLE PLACES LOADER
+  // ==============================
+
+  let fgbwGooglePromise = null;
+
+  function loadGooglePlaces() {
+
+    if (window.google && window.google.maps && window.google.maps.places) {
+      return Promise.resolve();
+    }
+
+    if (fgbwGooglePromise) {
+      return fgbwGooglePromise;
+    }
+
+    fgbwGooglePromise = new Promise((resolve, reject) => {
+
+      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+
+      if (existingScript) {
+        existingScript.addEventListener('load', () => resolve());
         return;
       }
-      const cbName = "fgbwGoogleInit_" + uid("cb");
-      window[cbName] = () => {
-        googleLoaded = true;
+
+      const callbackName = "fgbwGoogleInitCallback";
+
+      window[callbackName] = function () {
         resolve();
-        try { delete window[cbName]; } catch (e) {}
+        delete window[callbackName];
       };
-      const s = document.createElement("script");
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-        FGBW.googlePlacesKey
-      )}&libraries=places&callback=${cbName}`;
-      s.async = true;
-      s.onerror = reject;
-      document.head.appendChild(s);
+
+      const script = document.createElement("script");
+      script.src =
+        "https://maps.googleapis.com/maps/api/js?key=" +
+        encodeURIComponent(FGBW.googlePlacesKey) +
+        "&libraries=places&callback=" +
+        callbackName;
+
+      script.async = true;
+      script.defer = true;
+
+      script.onerror = function () {
+        reject("Google Maps failed to load.");
+      };
+
+      document.head.appendChild(script);
     });
+
+    return fgbwGooglePromise;
   }
 
   // ---------- LocationBlock Component ----------
@@ -138,6 +190,8 @@
                 Confirm
               </button>
 
+              <div class="fgbw-flight-result"></div>
+
               <div class="fgbw__loader is-hidden" data-loader></div>
             </div>
           </div>
@@ -184,11 +238,15 @@
         if (this.state.airport && this.state.airline && this.state.flight) {
           try {
             this.setLoading(true);
-            await wpAjax("fgbw_validate_flight", {
+            const res = await wpAjax("fgbw_validate_flight", {
               airport_iata: this.state.airport.iata_code,
               airline_iata: this.state.airline.iata_code,
               flight_number: this.state.flight,
             });
+
+            if (res.success && res.data) {
+              this.renderFlightCard(res.data);
+            }
           } catch (e) {
             // If validation fails, you can show UI error — kept minimal here
           } finally {
@@ -248,28 +306,57 @@
       this.$confirm.prop("disabled", !ok).toggleClass("is-disabled", !ok);
     }
 
-    async initAddressAutocomplete() {
-      await loadGooglePlacesIfNeeded();
-      if (!window.google || !window.google.maps || !window.google.maps.places) return;
+    // async initAddressAutocomplete() {
+    //   await loadGooglePlacesIfNeeded();
+    //   if (!window.google || !window.google.maps || !window.google.maps.places) return;
 
-      const input = this.$root.find(".fgbw__address")[0];
+    //   const input = this.$root.find(".fgbw__address")[0];
+    //   if (!input) return;
+
+    //   const autocomplete = new google.maps.places.Autocomplete(input, {
+    //     fields: ["formatted_address", "place_id", "geometry"],
+    //   });
+
+    //   autocomplete.addListener("place_changed", () => {
+    //     const place = autocomplete.getPlace();
+    //     if (!place || !place.geometry) return;
+
+    //     this.state.address = {
+    //       formatted_address: place.formatted_address || "",
+    //       place_id: place.place_id || "",
+    //       lat: place.geometry.location.lat(),
+    //       lng: place.geometry.location.lng(),
+    //     };
+    //     this.emit();
+    //   });
+    // }
+
+    async initAddressAutocomplete() {
+
+      await loadGooglePlaces();
+
+      if (!window.google || !google.maps || !google.maps.places) {
+        console.error("Google Places not available");
+        return;
+      }
+
+      const input = this.$root.find(".fgbw__address-input")[0];
       if (!input) return;
 
       const autocomplete = new google.maps.places.Autocomplete(input, {
-        fields: ["formatted_address", "place_id", "geometry"],
+        types: ["geocode"]
       });
 
       autocomplete.addListener("place_changed", () => {
         const place = autocomplete.getPlace();
-        if (!place || !place.geometry) return;
+        if (!place.geometry) return;
 
         this.state.address = {
-          formatted_address: place.formatted_address || "",
-          place_id: place.place_id || "",
+          formatted_address: place.formatted_address,
           lat: place.geometry.location.lat(),
           lng: place.geometry.location.lng(),
+          place_id: place.place_id
         };
-        this.emit();
       });
     }
 
@@ -845,5 +932,176 @@
     if (!$root.length) return;
     $root.each((_, el) => new BookingWizard($(el)));
   });
+
+  document.querySelector('.fgbw-confirm-btn').addEventListener('click', function () {
+
+    const airlineIata = document.querySelector('#airline_iata').value;
+    const flightNumber = document.querySelector('#flight_number').value;
+
+    if (!airlineIata || !flightNumber) {
+      alert("Please enter airline and flight number");
+      return;
+    }
+
+    fetch(fgbw_ajax.ajax_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        action: 'fgbw_fetch_flight',
+        _wpnonce: fgbw_ajax.nonce,
+        airline_iata: airlineIata,
+        flight_number: flightNumber
+      })
+    })
+      .then(res => res.json())
+      .then(response => {
+
+        if (!response.success) {
+          alert(response.data.message);
+          return;
+        }
+
+        renderFlightCard(response.data);
+      });
+  });
+
+  // function renderFlightCard(data) {
+
+  //   const container = document.querySelector('.fgbw-flight-result');
+
+  //   container.innerHTML = `
+  //       <div class="fgbw-flight-card">
+  //           <h4>${data.airline} (${data.flight_iata})</h4>
+  //           <p>Status: ${data.status.toUpperCase()}</p>
+
+  //           <div class="fgbw-flight-row">
+  //               <div>
+  //                   <strong>${data.departure_iata}</strong><br>
+  //                   ${data.departure_airport}<br>
+  //                   ${formatDate(data.departure_time)}
+  //               </div>
+
+  //               <div>
+  //                   ✈
+  //               </div>
+
+  //               <div>
+  //                   <strong>${data.arrival_iata}</strong><br>
+  //                   ${data.arrival_airport}<br>
+  //                   ${formatDate(data.arrival_time)}
+  //               </div>
+  //           </div>
+  //       </div>
+  //   `;
+  // }
+
+  function renderFlightCard(data) {
+    const $result = this.$root.find(".fgbw__flight-result");
+
+    $result.html(`
+    <div class="fgbw-flight-card">
+      <div class="fgbw-flight-card__top">
+        <strong>${data.airline} (${data.flight_iata})</strong>
+        <span class="fgbw-flight-badge">${data.status?.toUpperCase() || ""}</span>
+      </div>
+
+      <div class="fgbw-flight-card__row">
+        <div>
+          <strong>${data.departure_iata}</strong><br>
+          ${data.departure_airport}<br>
+          ${data.departure_time}
+        </div>
+
+        <div>✈</div>
+
+        <div>
+          <strong>${data.arrival_iata}</strong><br>
+          ${data.arrival_airport}<br>
+          ${data.arrival_time}
+        </div>
+      </div>
+    </div>
+  `);
+  }
+
+  function formatDate(dateStr) {
+    const d = new Date(dateStr);
+    return d.toLocaleString();
+  }
+
+  document.addEventListener("click", function (e) {
+
+    if (!e.target.classList.contains("fgbw-airport-confirm-btn")) return;
+
+    const block = e.target.closest(".fgbw-location-block");
+    if (!block) return;
+
+    const airlineIata = block.querySelector(".fgbw-airport-airline-iata")?.value?.trim();
+    const flightNo = block.querySelector(".fgbw-airport-flight")?.value?.trim();
+    const resultBox = block.querySelector(".fgbw-flight-result");
+
+    if (!resultBox) return;
+
+    if (!airlineIata || !flightNo) {
+      resultBox.innerHTML = `<div class="fgbw__error">Please select airline and enter flight number.</div>`;
+      return;
+    }
+
+    resultBox.innerHTML = `<div class="fgbw-loading">Loading flight details...</div>`;
+
+    fetch(fgbw_ajax.ajax_url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+      body: new URLSearchParams({
+        action: "fgbw_fetch_flight",
+        _wpnonce: fgbw_ajax.nonce,
+        airline_iata: airlineIata,
+        flight_number: flightNo
+      })
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (!res.success) {
+          resultBox.innerHTML = `<div class="fgbw__error">${res.data?.message || "Flight not found"}</div>`;
+          return;
+        }
+        renderFlightCard(resultBox, res.data);
+      })
+      .catch(() => {
+        resultBox.innerHTML = `<div class="fgbw__error">Unable to fetch flight details.</div>`;
+      });
+
+  });
+
+  function renderFlightCard(container, data) {
+    container.innerHTML = `
+    <div class="fgbw-flight-card">
+      <div class="fgbw-flight-card__top">
+        <strong>${data.airline} (${data.flight_iata})</strong>
+        <span class="fgbw-flight-badge">${(data.status || "").toUpperCase()}</span>
+      </div>
+      <div class="fgbw-flight-card__row">
+        <div class="fgbw-flight-col">
+          <div class="fgbw-flight-iata">${data.departure_iata || "-"}</div>
+          <div class="fgbw-flight-airport">${data.departure_airport || "-"}</div>
+          <div class="fgbw-flight-time">${formatDT(data.departure_time)}</div>
+        </div>
+        <div class="fgbw-flight-mid">✈</div>
+        <div class="fgbw-flight-col">
+          <div class="fgbw-flight-iata">${data.arrival_iata || "-"}</div>
+          <div class="fgbw-flight-airport">${data.arrival_airport || "-"}</div>
+          <div class="fgbw-flight-time">${formatDT(data.arrival_time)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  function formatDT(s) {
+    if (!s) return "-";
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    return d.toLocaleString();
+  }
 
 })(jQuery);

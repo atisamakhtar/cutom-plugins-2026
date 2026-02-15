@@ -174,3 +174,72 @@
   font-weight: 700;
 }
 .fgbw__toast.is-error { border-color: #b91c1c; }
+
+/* flight confirmation model */
+
+.fgbw-loading{
+  padding:10px 12px;
+  background:#f3f4f6;
+  border:1px solid #e5e7eb;
+  border-radius:8px;
+  font-size:13px;
+  margin-top:10px;
+}
+
+.fgbw-flight-card{
+  margin-top:10px;
+  padding:14px;
+  background:#f3f4f6;
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+}
+
+.fgbw-flight-card__top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:10px;
+}
+
+.fgbw-flight-badge{
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:12px;
+  background:#111827;
+  color:#fff;
+}
+
+.fgbw-flight-card__row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.fgbw-flight-col{
+  flex:1;
+}
+
+.fgbw-flight-iata{
+  font-size:18px;
+  font-weight:700;
+}
+
+.fgbw-flight-airport{
+  font-size:12px;
+  color:#374151;
+  margin-top:2px;
+}
+
+.fgbw-flight-time{
+  font-size:12px;
+  color:#6b7280;
+  margin-top:4px;
+}
+
+.fgbw-flight-mid{
+  width:40px;
+  text-align:center;
+  font-size:18px;
+  color:#111827;
+}

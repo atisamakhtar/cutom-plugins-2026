@@ -4,8 +4,10 @@ if (!defined('ABSPATH')) exit;
 require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-db.php';
 require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-email.php';
 
-class FGBW_AJAX {
-    public function init(): void {
+class FGBW_AJAX
+{
+    public function init(): void
+    {
         // Public
         add_action('wp_ajax_nopriv_fgbw_search_airports', [$this, 'search_airports']);
         add_action('wp_ajax_fgbw_search_airports', [$this, 'search_airports']);
@@ -18,21 +20,27 @@ class FGBW_AJAX {
 
         add_action('wp_ajax_nopriv_fgbw_submit_booking', [$this, 'submit_booking']);
         add_action('wp_ajax_fgbw_submit_booking', [$this, 'submit_booking']);
+
+        add_action('wp_ajax_fgbw_fetch_flight', [$this, 'fetch_flight_details']);
+        add_action('wp_ajax_nopriv_fgbw_fetch_flight', [$this, 'fetch_flight_details']);
     }
 
-    private function verify_nonce(): void {
+    private function verify_nonce(): void
+    {
         $nonce = $_POST['nonce'] ?? '';
         if (!wp_verify_nonce($nonce, 'fgbw_nonce')) {
             wp_send_json_error(['message' => 'Invalid security token.'], 403);
         }
     }
 
-    private function aviation_key(): string {
+    private function aviation_key(): string
+    {
         $k = (string) fgbw_get_option('aviationstack_key', '');
         return trim($k);
     }
 
-    private function aviation_get(string $endpoint, array $query): array {
+    private function aviation_get(string $endpoint, array $query): array
+    {
         $key = $this->aviation_key();
         if (!$key) return ['ok' => false, 'message' => 'Aviationstack key not configured.'];
 
@@ -65,80 +73,176 @@ class FGBW_AJAX {
         return $out;
     }
 
-    public function search_airports(): void {
-        $this->verify_nonce();
-        $q = sanitize_text_field(wp_unslash($_POST['q'] ?? ''));
-        if (mb_strlen($q) < 2) wp_send_json_success(['items' => []]);
-
-        // Aviationstack endpoints vary by plan.
-        // Many plans support /airports?search=...
-        $res = $this->aviation_get('airports', ['search' => $q, 'limit' => 10]);
-
-        if (!$res['ok']) wp_send_json_error(['message' => $res['message']], 400);
-
-        $items = $res['data']['data'] ?? [];
-        $mapped = array_map(function ($a) {
-            return [
-                'iata_code' => sanitize_text_field($a['iata_code'] ?? ''),
-                'icao_code' => sanitize_text_field($a['icao_code'] ?? ''),
-                'airport_name' => sanitize_text_field($a['airport_name'] ?? ''),
-                'country_name' => sanitize_text_field($a['country_name'] ?? ''),
-                'city' => sanitize_text_field($a['city'] ?? ''),
-            ];
-        }, $items);
-
-        wp_send_json_success(['items' => $mapped]);
-    }
-
-    public function search_airlines(): void {
-        $this->verify_nonce();
-        $q = sanitize_text_field(wp_unslash($_POST['q'] ?? ''));
-        if (mb_strlen($q) < 2) wp_send_json_success(['items' => []]);
-
-        $res = $this->aviation_get('airlines', ['search' => $q, 'limit' => 10]);
-        if (!$res['ok']) wp_send_json_error(['message' => $res['message']], 400);
-
-        $items = $res['data']['data'] ?? [];
-        $mapped = array_map(function ($a) {
-            return [
-                'iata_code' => sanitize_text_field($a['iata_code'] ?? ''),
-                'icao_code' => sanitize_text_field($a['icao_code'] ?? ''),
-                'airline_name' => sanitize_text_field($a['airline_name'] ?? ''),
-            ];
-        }, $items);
-
-        wp_send_json_success(['items' => $mapped]);
-    }
-
-    public function validate_flight(): void {
+    public function search_airports()
+    {
         $this->verify_nonce();
 
-        $airport_iata = sanitize_text_field(wp_unslash($_POST['airport_iata'] ?? ''));
-        $airline_iata = sanitize_text_field(wp_unslash($_POST['airline_iata'] ?? ''));
-        $flight_number = sanitize_text_field(wp_unslash($_POST['flight_number'] ?? ''));
+        global $wpdb;
+        $table = $wpdb->prefix . 'fg_airports';
 
-        // Optional validation (depends on plan / endpoints)
-        // We keep it permissive: return success even if endpoint not available.
-        if (!$airport_iata || !$flight_number) {
-            wp_send_json_success(['valid' => true]);
+        $q = sanitize_text_field($_POST['q'] ?? '');
+
+        if (strlen($q) < 2) {
+            wp_send_json_success(['items' => []]);
         }
 
-        // Attempt "flights" endpoint if available
-        $res = $this->aviation_get('flights', [
-            'flight_iata' => $flight_number,
-            'airline_iata' => $airline_iata,
-            'limit' => 1,
+        // If exactly 3 letters → prioritize IATA
+        if (preg_match('/^[A-Za-z]{3}$/', $q)) {
+
+            $results = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT * FROM $table
+             WHERE iata_code = %s
+             AND airport_type IN ('large_airport','medium_airport')
+             LIMIT 10",
+                    strtoupper($q)
+                ),
+                ARRAY_A
+            );
+        } else {
+
+            $like = '%' . $wpdb->esc_like($q) . '%';
+
+            $results = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT * FROM $table
+             WHERE
+             (airport_name LIKE %s
+              OR city LIKE %s)
+             AND airport_type IN ('large_airport','medium_airport')
+             AND iata_code != ''
+             LIMIT 10",
+                    $like,
+                    $like
+                ),
+                ARRAY_A
+            );
+        }
+
+        wp_send_json_success(['items' => $results]);
+    }
+
+    // public function search_airlines(): void
+    // {
+    //     $this->verify_nonce();
+    //     $q = sanitize_text_field(wp_unslash($_POST['q'] ?? ''));
+    //     if (mb_strlen($q) < 2) wp_send_json_success(['items' => []]);
+
+    //     $res = $this->aviation_get('airlines', ['search' => $q, 'limit' => 10]);
+    //     if (!$res['ok']) wp_send_json_error(['message' => $res['message']], 400);
+
+    //     $items = $res['data']['data'] ?? [];
+    //     $mapped = array_map(function ($a) {
+    //         return [
+    //             'iata_code' => sanitize_text_field($a['iata_code'] ?? ''),
+    //             'icao_code' => sanitize_text_field($a['icao_code'] ?? ''),
+    //             'airline_name' => sanitize_text_field($a['airline_name'] ?? ''),
+    //         ];
+    //     }, $items);
+
+    //     wp_send_json_success(['items' => $mapped]);
+    // }
+
+    public function search_airlines()
+    {
+
+        $this->verify_nonce();
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'fg_airlines';
+
+        $q = sanitize_text_field($_POST['q'] ?? '');
+
+        if (strlen($q) < 2) {
+            wp_send_json_success(['items' => []]);
+        }
+
+        // If 2-letter IATA code search
+        if (preg_match('/^[A-Za-z]{2}$/', $q)) {
+
+            $results = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT * FROM $table
+                 WHERE iata_code = %s
+                 AND active = 1
+                 LIMIT 10",
+                    strtoupper($q)
+                ),
+                ARRAY_A
+            );
+        } else {
+
+            $like = '%' . $wpdb->esc_like($q) . '%';
+
+            $results = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT * FROM $table
+                 WHERE airline_name LIKE %s
+                 AND active = 1
+                 LIMIT 10",
+                    $like
+                ),
+                ARRAY_A
+            );
+        }
+
+        wp_send_json_success(['items' => $results]);
+    }
+
+    public function validate_flight()
+    {
+
+        $this->verify_nonce();
+
+        $airline_iata = sanitize_text_field($_POST['airline_iata'] ?? '');
+        $flight_number = sanitize_text_field($_POST['flight_number'] ?? '');
+
+        if (!$airline_iata || !$flight_number) {
+            wp_send_json_success(['valid' => false]);
+        }
+
+        // $api_key = get_option('fgbw_aviationstack_key');
+        $settings = get_option('fgbw_settings', []);
+        $api_key  = $settings['aviationstack_key'] ?? '';
+
+        if (!$api_key) {
+            wp_send_json_error(['message' => 'API key missing']);
+        }
+
+        $flight_code = strtoupper($airline_iata . $flight_number);
+
+        $response = wp_remote_get(
+            "http://api.aviationstack.com/v1/flights?access_key={$api_key}&flight_iata={$flight_code}"
+        );
+
+        if (is_wp_error($response)) {
+            wp_send_json_success(['valid' => false]);
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+
+        if (empty($body['data'][0])) {
+            wp_send_json_success(['valid' => false]);
+        }
+
+        $flight = $body['data'][0];
+
+        wp_send_json_success([
+            'valid' => true,
+            'airline' => $flight['airline']['name'],
+            'flight_iata' => $flight['flight']['iata'],
+            'status' => $flight['flight_status'],
+            'departure_airport' => $flight['departure']['airport'],
+            'departure_iata' => $flight['departure']['iata'],
+            'departure_time' => $flight['departure']['scheduled'],
+            'arrival_airport' => $flight['arrival']['airport'],
+            'arrival_iata' => $flight['arrival']['iata'],
+            'arrival_time' => $flight['arrival']['scheduled'],
         ]);
-
-        if (!$res['ok']) {
-            wp_send_json_success(['valid' => true, 'note' => 'Validation skipped']);
-        }
-
-        $items = $res['data']['data'] ?? [];
-        wp_send_json_success(['valid' => !empty($items)]);
     }
 
-    public function submit_booking(): void {
+    public function submit_booking(): void
+    {
         $this->verify_nonce();
 
         $hp = sanitize_text_field(wp_unslash($_POST['company_hp'] ?? ''));
@@ -217,5 +321,53 @@ class FGBW_AJAX {
         FGBW_Email::send_admin($booking_id, $payload);
 
         wp_send_json_success(['booking_id' => $booking_id]);
+    }
+
+    public function fetch_flight_details()
+    {
+
+        $this->verify_nonce();
+
+        $airline_iata = sanitize_text_field($_POST['airline_iata'] ?? '');
+        $flight_number = sanitize_text_field($_POST['flight_number'] ?? '');
+
+        if (!$airline_iata || !$flight_number) {
+            wp_send_json_error(['message' => 'Missing flight info']);
+        }
+
+        // $api_key = get_option('fgbw_aviationstack_key');
+
+        $settings = get_option('fgbw_settings', []);
+        $api_key  = $settings['aviationstack_key'] ?? '';
+
+        $flight_code = strtoupper($airline_iata . $flight_number);
+
+        $response = wp_remote_get(
+            "http://api.aviationstack.com/v1/flights?access_key={$api_key}&flight_iata={$flight_code}"
+        );
+
+        if (is_wp_error($response)) {
+            wp_send_json_error(['message' => 'API request failed']);
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+
+        if (empty($body['data'][0])) {
+            wp_send_json_error(['message' => 'Flight not found']);
+        }
+
+        $flight = $body['data'][0];
+
+        wp_send_json_success([
+            'airline' => $flight['airline']['name'],
+            'flight_iata' => $flight['flight']['iata'],
+            'status' => $flight['flight_status'],
+            'departure_airport' => $flight['departure']['airport'],
+            'departure_iata' => $flight['departure']['iata'],
+            'departure_time' => $flight['departure']['scheduled'],
+            'arrival_airport' => $flight['arrival']['airport'],
+            'arrival_iata' => $flight['arrival']['iata'],
+            'arrival_time' => $flight['arrival']['scheduled'],
+        ]);
     }
 }
