@@ -460,6 +460,47 @@
         this.onChange(this.getValue());
       }
     }
+
+    renderFlightCard(data) {
+
+      const $result = this.$root.find(".fgbw-flight-result");
+      if (!$result.length) return;
+
+      $result.html(`
+        <div class="fgbw-flight-card">
+            <div class="fgbw-flight-card__top">
+                <strong>${data.airline} (${data.flight_iata})</strong>
+                <span class="fgbw-flight-badge">
+                    ${(data.status || "").toUpperCase()}
+                </span>
+            </div>
+
+            <div class="fgbw-flight-card__row">
+                <div>
+                    <strong>${data.departure_iata}</strong><br>
+                    ${data.departure_airport}<br>
+                    ${this.formatDT(data.departure_time)}
+                </div>
+
+                <div>✈</div>
+
+                <div>
+                    <strong>${data.arrival_iata}</strong><br>
+                    ${data.arrival_airport}<br>
+                    ${this.formatDT(data.arrival_time)}
+                </div>
+            </div>
+        </div>
+    `);
+    }
+
+    formatDT(s) {
+      if (!s) return "-";
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return s;
+      return d.toLocaleString();
+    }
+
   }
 
   // ---------- Wizard Controller ----------
@@ -995,34 +1036,34 @@
   //   `;
   // }
 
-  function renderFlightCard(data) {
-    const $result = this.$root.find(".fgbw__flight-result");
+  // function renderFlightCard(data) {
+  //   const $result = this.$root.find(".fgbw__flight-result");
 
-    $result.html(`
-    <div class="fgbw-flight-card">
-      <div class="fgbw-flight-card__top">
-        <strong>${data.airline} (${data.flight_iata})</strong>
-        <span class="fgbw-flight-badge">${data.status?.toUpperCase() || ""}</span>
-      </div>
+  //   $result.html(`
+  //   <div class="fgbw-flight-card">
+  //     <div class="fgbw-flight-card__top">
+  //       <strong>${data.airline} (${data.flight_iata})</strong>
+  //       <span class="fgbw-flight-badge">${data.status?.toUpperCase() || ""}</span>
+  //     </div>
 
-      <div class="fgbw-flight-card__row">
-        <div>
-          <strong>${data.departure_iata}</strong><br>
-          ${data.departure_airport}<br>
-          ${data.departure_time}
-        </div>
+  //     <div class="fgbw-flight-card__row">
+  //       <div>
+  //         <strong>${data.departure_iata}</strong><br>
+  //         ${data.departure_airport}<br>
+  //         ${data.departure_time}
+  //       </div>
 
-        <div>✈</div>
+  //       <div>✈</div>
 
-        <div>
-          <strong>${data.arrival_iata}</strong><br>
-          ${data.arrival_airport}<br>
-          ${data.arrival_time}
-        </div>
-      </div>
-    </div>
-  `);
-  }
+  //       <div>
+  //         <strong>${data.arrival_iata}</strong><br>
+  //         ${data.arrival_airport}<br>
+  //         ${data.arrival_time}
+  //       </div>
+  //     </div>
+  //   </div>
+  // `);
+  // }
 
   function formatDate(dateStr) {
     const d = new Date(dateStr);
