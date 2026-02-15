@@ -416,10 +416,10 @@
     setMode(mode) {
       this.state.mode = mode;
       this.$root.find(".fgbw__loc-mode").removeClass("is-active");
-      this.$root.find(`.fgbw__loc - mode[data - mode="${mode}"]`).addClass("is-active");
+      this.$root.find(`.fgbw__loc-mode[data-mode="${mode}"]`).addClass("is-active");
 
-      this.$root.find(`[data - pane= "address"]`).toggleClass("is-hidden", mode !== "address");
-      this.$root.find(`[data - pane= "airport"]`).toggleClass("is-hidden", mode !== "airport");
+      this.$root.find(`[data-pane="address"]`).toggleClass("is-hidden", mode !== "address");
+      this.$root.find(`[data-pane="airport"]`).toggleClass("is-hidden", mode !== "airport");
 
       // Reset mode-specific state (optional)
       if (mode === "address") {
@@ -510,7 +510,7 @@
     }
 
     dropdownEl(kind) {
-      return this.$root.find(`[data - dd= "${kind}"]`);
+      return this.$root.find(`[data-dd="${kind}"]`);
     }
 
     showDropdown(kind, items, onPick) {
@@ -522,7 +522,7 @@
 
       const html = items
         .slice(0, 8)
-        .map((it, i) => `< div class="fgbw__dd-item" data - idx="${i}" > ${it.label}</div > `)
+        .map((it, i) => `<div class="fgbw__dd-item" data-idx="${i}">${it.label}</div>`)
         .join("");
 
       $dd.removeClass("is-hidden").html(html);
@@ -618,7 +618,7 @@
       if (!$result.length) return;
 
       $result.html(`
-        < div class="fgbw-flight-card" >
+        <div class="fgbw-flight-card">
             <div class="fgbw-flight-card__top">
                 <strong>${data.airline} (${data.flight_iata})</strong>
                 <span class="fgbw-flight-badge">
