@@ -1,7 +1,7 @@
 <?php if (!defined('ABSPATH')) exit; ?>
 <div class="fgbw">
   <form class="fgbw__form" autocomplete="off">
-    <input type="text" name="company_hp" class="fgbw__hp" tabindex="-1" value="" aria-hidden="true" />
+    <input type="text" name="company_hp" class="fgbw__hp" tabindex="-1" value="" aria-hidden="true" autocomplete="nope" style="display:none!important;visibility:hidden!important;position:absolute!important;left:-99999px!important;" />
     <input type="hidden" name="submission_token" class="fgbw__submission_token" value="" />
 
     <div class="fgbw__steps">

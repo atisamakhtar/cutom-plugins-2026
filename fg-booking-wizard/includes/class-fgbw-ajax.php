@@ -241,87 +241,172 @@ class FGBW_AJAX
         ]);
     }
 
-    public function submit_booking(): void
+    public function submit_booking()
     {
-        $this->verify_nonce();
+        check_ajax_referer('fgbw_nonce', 'nonce');
 
-        $hp = sanitize_text_field(wp_unslash($_POST['company_hp'] ?? ''));
-        if ($hp) wp_send_json_error(['message' => 'Spam detected.'], 400);
+        // BUG 1 FIX: The JS sends payload as JSON.stringify(), so we must decode it first.
+        // Previously the raw JSON string was used directly as an array, making all data empty.
+        $raw     = stripslashes( $_POST['payload'] ?? '' );
+        $payload = json_decode( $raw, true );
 
-        $raw = wp_unslash($_POST['payload'] ?? '');
-        $payload = json_decode($raw, true);
-        if (!is_array($payload)) wp_send_json_error(['message' => 'Invalid payload.'], 400);
-
-        // Prevent duplicates via token transient
-        $token = sanitize_text_field($payload['submission_token'] ?? '');
-        if (!$token) wp_send_json_error(['message' => 'Missing submission token.'], 400);
-
-        $tok_key = 'fgbw_tok_' . md5($token);
-        if (get_transient($tok_key)) {
-            wp_send_json_error(['message' => 'Duplicate submission detected.'], 409);
-        }
-        set_transient($tok_key, 1, 10 * MINUTE_IN_SECONDS);
-
-        // Sanitize
-        $trip_type = sanitize_text_field($payload['trip_type'] ?? '');
-        $order_type = sanitize_text_field($payload['order_type'] ?? '');
-        $vehicle = sanitize_text_field($payload['vehicle'] ?? '');
-
-        $name = fgbw_sanitize_text($payload['name'] ?? '');
-        $email = fgbw_sanitize_email($payload['email'] ?? '');
-        $phone = fgbw_sanitize_phone($payload['phone'] ?? '');
-
-        if (!$name || !$email || !$phone) {
-            wp_send_json_error(['message' => 'Contact fields are required.'], 400);
-        }
-        if (!in_array($trip_type, ['one_way', 'round_trip'], true)) {
-            wp_send_json_error(['message' => 'Invalid trip type.'], 400);
-        }
-        if (!$order_type) wp_send_json_error(['message' => 'Order type is required.'], 400);
-        if (!$vehicle) wp_send_json_error(['message' => 'Vehicle is required.'], 400);
-
-        $trip = $payload['trip'] ?? [];
-        $pickup = $trip['pickup'] ?? null;
-        $return = $trip['return'] ?? null;
-
-        // Server-side validation (minimal but strict enough)
-        $pickup_count = isset($pickup['passenger_count']) ? (int)$pickup['passenger_count'] : 0;
-        if ($pickup_count < 1) wp_send_json_error(['message' => 'Passenger count invalid.'], 400);
-
-        if (empty($pickup['datetime'])) wp_send_json_error(['message' => 'Pickup datetime required.'], 400);
-
-        if ($trip_type === 'round_trip') {
-            $ret_count = isset($return['passenger_count']) ? (int)$return['passenger_count'] : 0;
-            if ($ret_count < 1) wp_send_json_error(['message' => 'Return passenger count invalid.'], 400);
-            if (empty($return['datetime'])) wp_send_json_error(['message' => 'Return datetime required.'], 400);
+        if ( ! is_array( $payload ) || empty( $payload ) ) {
+            wp_send_json_error( [ 'message' => 'Invalid payload' ] );
         }
 
-        $full_payload_json = fgbw_json_encode($payload);
-        $pickup_json = fgbw_json_encode($pickup);
-        $return_json = $trip_type === 'round_trip' ? fgbw_json_encode($return) : null;
+        // BUG 2 FIX: The JS places name/email/phone at the ROOT of the payload object
+        // (payload.name, payload.email, payload.phone), NOT nested inside payload.contact.
+        // Previously the code looked for $payload['contact']['name'] which never existed.
+        $name  = sanitize_text_field( $payload['name']  ?? '' );
+        $email = sanitize_email(      $payload['email'] ?? '' );
+        $phone = sanitize_text_field( $payload['phone'] ?? '' );
 
-        $booking_id = FGBW_DB::insert_booking([
-            'created_at' => current_time('mysql'),
-            'name' => $name,
-            'email' => $email,
-            'phone' => $phone,
-            'trip_type' => $trip_type,
-            'order_type' => $order_type,
-            'passenger_count' => $pickup_count, // stored as primary count (pickup). Return is in return_json.
-            'pickup_json' => $pickup_json,
-            'return_json' => $return_json,
-            'vehicle' => $vehicle,
-            'full_payload_json' => $full_payload_json,
-        ]);
+        $trip   = $payload['trip']   ?? [];
+        $pickup = $trip['pickup']    ?? [];
+        $return = $trip['return']    ?? null;
 
-        if (!$booking_id) wp_send_json_error(['message' => 'DB insert failed.'], 500);
+        $row = [
+            'name'             => $name,
+            'email'            => $email,
+            'phone'            => $phone,
+            'trip_type'        => sanitize_text_field( $payload['trip_type']  ?? '' ),
+            'order_type'       => sanitize_text_field( $payload['order_type'] ?? '' ),
+            'passenger_count'  => intval( $pickup['passenger_count'] ?? 1 ),
+            'pickup_json'      => wp_json_encode( $pickup ),
+            'return_json'      => wp_json_encode( $return ),
+            'vehicle'          => sanitize_text_field( $payload['vehicle'] ?? '' ),
+            'full_payload_json'=> wp_json_encode( $payload ),
+        ];
 
-        // Emails
-        FGBW_Email::send_customer($booking_id, $payload);
-        FGBW_Email::send_admin($booking_id, $payload);
+        $booking_id = FGBW_DB::insert_booking( $row );
 
-        wp_send_json_success(['booking_id' => $booking_id]);
+        if ( ! $booking_id ) {
+            wp_send_json_error( [ 'message' => 'Database insert failed' ] );
+        }
+
+        // BUG 3 FIX: Pass the full decoded $payload (not the flat $row) to FGBW_Email,
+        // which needs the nested trip/pickup/dropoff structure for its placeholders.
+        // Also call the proper HTML email methods instead of the plain-text fallback.
+        FGBW_Email::send_customer( $booking_id, $payload );
+        FGBW_Email::send_admin(    $booking_id, $payload );
+
+        wp_send_json_success( [
+            'booking_id' => $booking_id,
+        ] );
     }
+
+    // public function submit_booking(): void
+    // {
+    //     $this->verify_nonce();
+
+    //     $hp = sanitize_text_field(wp_unslash($_POST['company_hp'] ?? ''));
+    //     if ($hp) wp_send_json_error(['message' => 'Spam detected.'], 400);
+
+    //     $raw = wp_unslash($_POST['payload'] ?? '');
+    //     $payload = json_decode($raw, true);
+    //     if (!is_array($payload)) wp_send_json_error(['message' => 'Invalid payload.'], 400);
+
+    //     // Prevent duplicates via token transient
+    //     $token = sanitize_text_field($payload['submission_token'] ?? '');
+    //     if (!$token) wp_send_json_error(['message' => 'Missing submission token.'], 400);
+
+    //     $tok_key = 'fgbw_tok_' . md5($token);
+    //     if (get_transient($tok_key)) {
+    //         wp_send_json_error(['message' => 'Duplicate submission detected.'], 409);
+    //     }
+    //     set_transient($tok_key, 1, 10 * MINUTE_IN_SECONDS);
+
+    //     // Sanitize
+    //     $trip_type = sanitize_text_field($payload['trip_type'] ?? '');
+    //     $order_type = sanitize_text_field($payload['order_type'] ?? '');
+    //     $vehicle = sanitize_text_field($payload['vehicle'] ?? '');
+
+    //     $name = fgbw_sanitize_text($payload['name'] ?? '');
+    //     $email = fgbw_sanitize_email($payload['email'] ?? '');
+    //     $phone = fgbw_sanitize_phone($payload['phone'] ?? '');
+
+    //     if (!$name || !$email || !$phone) {
+    //         wp_send_json_error(['message' => 'Contact fields are required.'], 400);
+    //     }
+    //     if (!in_array($trip_type, ['one_way', 'round_trip'], true)) {
+    //         wp_send_json_error(['message' => 'Invalid trip type.'], 400);
+    //     }
+    //     if (!$order_type) wp_send_json_error(['message' => 'Order type is required.'], 400);
+    //     if (!$vehicle) wp_send_json_error(['message' => 'Vehicle is required.'], 400);
+
+    //     $trip = $payload['trip'] ?? [];
+    //     $pickup = $trip['pickup'] ?? null;
+    //     $return = $trip['return'] ?? null;
+
+    //     // Server-side validation (minimal but strict enough)
+    //     $pickup_count = isset($pickup['passenger_count']) ? (int)$pickup['passenger_count'] : 0;
+    //     if ($pickup_count < 1) wp_send_json_error(['message' => 'Passenger count invalid.'], 400);
+
+    //     if (empty($pickup['datetime'])) wp_send_json_error(['message' => 'Pickup datetime required.'], 400);
+
+    //     if ($trip_type === 'round_trip') {
+    //         $ret_count = isset($return['passenger_count']) ? (int)$return['passenger_count'] : 0;
+    //         if ($ret_count < 1) wp_send_json_error(['message' => 'Return passenger count invalid.'], 400);
+    //         if (empty($return['datetime'])) wp_send_json_error(['message' => 'Return datetime required.'], 400);
+    //     }
+
+    //     $full_payload_json = fgbw_json_encode($payload);
+    //     $pickup_json = fgbw_json_encode($pickup);
+    //     $return_json = $trip_type === 'round_trip' ? fgbw_json_encode($return) : null;
+
+    //     $booking_id = FGBW_DB::insert_booking([
+    //         'created_at' => current_time('mysql'),
+    //         'name' => $name,
+    //         'email' => $email,
+    //         'phone' => $phone,
+    //         'trip_type' => $trip_type,
+    //         'order_type' => $order_type,
+    //         'passenger_count' => $pickup_count, // stored as primary count (pickup). Return is in return_json.
+    //         'pickup_json' => $pickup_json,
+    //         'return_json' => $return_json,
+    //         'vehicle' => $vehicle,
+    //         'full_payload_json' => $full_payload_json,
+    //     ]);
+
+    //     if (!$booking_id) wp_send_json_error(['message' => 'DB insert failed.'], 500);
+
+    //     // Emails
+    //     FGBW_Email::send_customer($booking_id, $payload);
+    //     FGBW_Email::send_admin($booking_id, $payload);
+
+    //     wp_send_json_success(['booking_id' => $booking_id]);
+    // }
+
+    // private function send_emails($booking_id, $payload)
+    // {
+
+    //     $settings = get_option('fgbw_settings', []);
+
+    //     $admin_email = $settings['admin_email'] ?? get_option('admin_email');
+
+    //     $customer_email = sanitize_email($payload['contact']['email'] ?? '');
+
+    //     $subject_admin = "New Booking Received - {$booking_id}";
+    //     $subject_customer = "Your Booking Request - {$booking_id}";
+
+    //     $body = "
+    //     Booking ID: {$booking_id}
+
+    //     Trip Type: {$payload['trip_type']}
+    //     Order Type: {$payload['order_type']}
+    //     Vehicle: {$payload['vehicle']}
+
+    //     Thank you.
+    //     ";
+
+    //     wp_mail($admin_email, $subject_admin, $body);
+    //     if ($customer_email) {
+    //         wp_mail($customer_email, $subject_customer, $body);
+    //     }
+    // }
+
+    // send_emails() removed — FGBW_Email::send_customer() and ::send_admin() are called directly.
+
 
     public function fetch_flight_details()
     {

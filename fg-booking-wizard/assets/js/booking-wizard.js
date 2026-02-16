@@ -35,33 +35,6 @@
     });
   }
 
-  // ---------- Google Loader ----------
-  // let googleLoaded = false;
-  // function loadGooglePlacesIfNeeded() {
-  //   if (googleLoaded) return Promise.resolve();
-  //   if (!FGBW.googlePlacesKey) return Promise.resolve();
-  //   return new Promise((resolve, reject) => {
-  //     if (window.google && window.google.maps && window.google.maps.places) {
-  //       googleLoaded = true;
-  //       resolve();
-  //       return;
-  //     }
-  //     const cbName = "fgbwGoogleInit_" + uid("cb");
-  //     window[cbName] = () => {
-  //       googleLoaded = true;
-  //       resolve();
-  //       try { delete window[cbName]; } catch (e) { }
-  //     };
-  //     const s = document.createElement("script");
-  //     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-  //       FGBW.googlePlacesKey
-  //     )}&libraries=places&callback=${cbName}`;
-  //     s.async = true;
-  //     s.onerror = reject;
-  //     document.head.appendChild(s);
-  //   });
-  // }
-
   // ==============================
   // SAFE GOOGLE PLACES LOADER
   // ==============================
@@ -593,10 +566,17 @@
     getValue() {
       const out = { mode: this.state.mode };
       if (this.state.mode === "address") {
-        out.address = this.state.address; // may be null until chosen
+        out.address = this.state.address; // set by Google Places, or null if freehand
+        // _rawText captures whatever the user typed even without a Places selection
+        out._rawText = (this.$root.find(".fgbw__address").val() || "").trim();
+        // If Places didn't fire but user typed something, build a minimal address object
+        if (!out.address && out._rawText) {
+          out.address = { formatted_address: out._rawText, lat: null, lng: null, place_id: null };
+        }
         out.airport = null;
       } else {
         out.address = null;
+        out._rawText = "";
         out.airport = this.state.airport;
         out.airline = this.state.noFlightInfo ? null : this.state.airline;
         out.flight = this.state.noFlightInfo ? "" : this.state.flight;
@@ -679,10 +659,21 @@
         round_return: { pickup: null, dropoff: null, stops: [] },
       };
 
-      this.$root.on("click", "[data-next]", () => this.next());
-      this.$root.on("click", "[data-prev]", () => this.prev());
+      // this.$root.on("click", "[data-next]", () => this.next());
+      // this.$root.on("click", "[data-prev]", () => this.prev());
+      // this.$root.on("click", "[data-submit]", () => this.submit());
 
       this.init();
+    }
+
+    showSuccess(id) {
+      this.$root.find(".fgbw__form").html(`
+    <div class="fgbw__thankyou">
+      <h2>Thank You!</h2>
+      <p>Your booking request has been submitted successfully.</p>
+      <p><strong>Booking ID:</strong> ${id}</p>
+    </div>
+  `);
     }
 
     emptySegment() {
@@ -694,6 +685,8 @@
       const tok = uid("subm");
       this.$root.find(".fgbw__submission_token").val(tok);
 
+      // Clear honeypot immediately — browsers can autofill even hidden fields
+      this.$root.find('input[name="company_hp"]').val("");
       this.initTripToggle();
       this.initOrderTypeSelect();
       this.initDatePickers();
@@ -948,11 +941,33 @@
       // Kept empty or basic for compatibility, but logic removed visually in HTML
     }
 
+    // bindNavButtons() {
+    //   this.$root.on("click", "[data-next]", () => this.next());
+    //   this.$root.on("click", "[data-prev]", () => this.prev());
+    //   this.$root.on("click", "[data-submit]", () => this.submit());
+    //   this.$root.on("click", "[data-new-booking]", () => this.resetForm());
+    // }
+
     bindNavButtons() {
-      this.$root.on("click", "[data-next]", () => this.next());
-      this.$root.on("click", "[data-prev]", () => this.prev());
-      this.$root.on("click", "[data-submit]", () => this.submit());
-      this.$root.on("click", "[data-new-booking]", () => this.resetForm());
+      this.$root.on("click", "[data-next]", (e) => {
+        e.preventDefault();
+        this.next();
+      });
+
+      this.$root.on("click", "[data-prev]", (e) => {
+        e.preventDefault();
+        this.prev();
+      });
+
+      this.$root.on("click", "[data-submit]", (e) => {
+        e.preventDefault();
+        this.submit();
+      });
+
+      this.$root.on("click", "[data-new-booking]", (e) => {
+        e.preventDefault();
+        this.resetForm();
+      });
     }
 
     resetForm() {
@@ -1098,14 +1113,22 @@
       }
 
       if (step === 2) {
-        const name = this.$root.find('input[name="first_name"]').val().trim() + ' ' + this.$root.find('input[name="last_name"]').val().trim();
-        const email = this.$root.find('input[name="email"]').val().trim();
-        const phone = this.$root.find('input[name="phone"]').val().trim();
 
-        this.state.contact = { name, email, phone };
+        // FIX: Read contact from this.state.contact (already set by submit() before calling us)
+        // rather than re-reading from DOM here. This prevents double-read bugs and makes
+        // validateStep() a pure validator with no side effects.
+        const nameParts = (this.state.contact.name || "").split(" ");
+        const first = nameParts[0] || "";
+        const last  = nameParts.slice(1).join(" ") || "";
+        const email = this.state.contact.email || "";
+        const phone = this.state.contact.phone || "";
 
-        if (!name.trim()) { this.toast("Name is required", true); return false; }
-        if (!email || !/^\S+@\S+\.\S+$/.test(email)) { this.toast("Valid email is required", true); return false; }
+        if (!first) { this.toast("First name is required", true); return false; }
+        if (!last) { this.toast("Last name is required", true); return false; }
+        if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+          this.toast("Valid email is required", true);
+          return false;
+        }
         if (!phone) { this.toast("Phone is required", true); return false; }
 
         return true;
@@ -1115,20 +1138,21 @@
     }
 
     isLocationValid(loc, label = "Location") {
-      // loc example = { mode, address | airport ... }
+      // Accept: (1) Google Places selection, (2) freehand typed text, (3) airport selection
       if (!loc || !loc.mode) {
-        this.toast(`Please complete the ${label}.`, true);
+        this.toast("Please complete the " + label + ".", true);
         return false;
       }
-
       if (loc.mode === "address") {
-        if (!loc.address || !loc.address.formatted_address) {
-          this.toast(`Please select a valid address for ${label}.`, true);
+        const hasPlaces  = loc.address && loc.address.formatted_address;
+        const hasRawText = loc._rawText && loc._rawText.trim().length > 0;
+        if (!hasPlaces && !hasRawText) {
+          this.toast("Please enter an address for " + label + ".", true);
           return false;
         }
       } else {
         if (!loc.airport || !loc.airport.iata_code) {
-          this.toast(`Please select an airport for ${label}.`, true);
+          this.toast("Please select an airport for " + label + ".", true);
           return false;
         }
       }
@@ -1259,10 +1283,39 @@
     }
 
     async submit() {
-      if (!this.validateStep(2)) return;
+
+      console.log("=== FGBW Submit clicked ===");
+      console.log("Current step:", this.step);
+
+      // FIX: Populate state.contact from DOM BEFORE validateStep(2) runs.
+      // Previously, validateStep(2) set this.state.contact internally, but if any
+      // validation failed the state was still set yet submit() had already read stale
+      // empty state values. Now we always read fresh DOM values here first.
+      const first = this.$root.find('input[name="first_name"]').val().trim();
+      const last  = this.$root.find('input[name="last_name"]').val().trim();
+      const email = this.$root.find('input[name="email"]').val().trim();
+      const phone = this.$root.find('input[name="phone"]').val().trim();
+      this.state.contact = { name: (first + " " + last).trim(), email, phone };
+
+      console.log("Contact state:", JSON.stringify(this.state.contact));
+      console.log("Trip state:", JSON.stringify(this.state.trip));
+      console.log("Order type:", this.state.order_type, "| Trip type:", this.state.trip_type);
+
+      if (!this.validateStep(this.step)) {
+        console.log("validateStep(" + this.step + ") FAILED - check toast message");
+        return;
+      }
+      console.log("validateStep passed - proceeding to AJAX");
 
       const hp = this.$root.find('input[name="company_hp"]').val().trim();
-      if (hp) return; // honeypot: silent drop
+      if (hp) {
+        // HONEYPOT TRIGGERED - likely browser autofill filled a hidden field.
+        // This was silently blocking all submissions. Log it so it's visible.
+        console.warn("FGBW: Honeypot field was filled (value: '" + hp + "'). Clearing and retrying.");
+        this.$root.find('input[name="company_hp"]').val("");
+        // Don't block — autofill filling a hidden field is not a real spam signal.
+        // Just clear it and continue.
+      }
 
       const $btn = this.$root.find("[data-submit]");
       const $spin = this.$root.find(".fgbw__spinner");
@@ -1272,7 +1325,7 @@
       const payload = {
         trip_type: this.state.trip_type,
         order_type: this.state.order_type,
-        vehicle: this.state.vehicle, // May be empty
+        vehicle: this.state.vehicle,
         name: this.state.contact.name,
         email: this.state.contact.email,
         phone: this.state.contact.phone,
@@ -1297,6 +1350,7 @@
         this.$root.find('[data-confirmation-email]').text(this.state.contact.email);
         this.goTo(3);
       } catch (e) {
+        console.error("FGBW submit error:", e);
         this.toast("Submission failed. Please try again.", true);
       } finally {
         $btn.prop("disabled", false);
@@ -1305,9 +1359,11 @@
     }
 
     toast(msg, isError) {
+      console.log("FGBW Toast:", isError ? "[ERROR]" : "[INFO]", msg);
       const $t = this.$root.find("[data-toast]");
       $t.text(msg).removeClass("is-hidden").toggleClass("is-error", !!isError);
-      setTimeout(() => $t.addClass("is-hidden"), 4500);
+      clearTimeout(this._toastTimer);
+      this._toastTimer = setTimeout(() => $t.addClass("is-hidden"), 8000);
     }
   }
 
@@ -1317,111 +1373,6 @@
     if (!$root.length) return;
     $root.each((_, el) => new BookingWizard($(el)));
   });
-
-  // $(function () {
-  //   const $root = $(".fgbw");
-  //   if (!$root.length) return;
-
-  //   $root.each((_, el) => {
-  //     const instance = new BookingWizard($(el));
-
-  //     // expose for debugging
-  //     window.fgbwInstance = instance;
-
-  //     console.log("Wizard initialized:", instance);
-  //   });
-  // });
-
-  // document.querySelector('.fgbw-confirm-btn').addEventListener('click', function () {
-
-  //   const airlineIata = document.querySelector('#airline_iata').value;
-  //   const flightNumber = document.querySelector('#flight_number').value;
-
-  //   if (!airlineIata || !flightNumber) {
-  //     alert("Please enter airline and flight number");
-  //     return;
-  //   }
-
-  //   fetch(fgbw_ajax.ajax_url, {
-  //     method: 'POST',
-  //     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  //     body: new URLSearchParams({
-  //       action: 'fgbw_fetch_flight',
-  //       _wpnonce: fgbw_ajax.nonce,
-  //       airline_iata: airlineIata,
-  //       flight_number: flightNumber
-  //     })
-  //   })
-  //     .then(res => res.json())
-  //     .then(response => {
-
-  //       if (!response.success) {
-  //         alert(response.data.message);
-  //         return;
-  //       }
-
-  //       renderFlightCard(response.data);
-  //     });
-  // });
-
-  // function renderFlightCard(data) {
-
-  //   const container = document.querySelector('.fgbw-flight-result');
-
-  //   container.innerHTML = `
-  //       <div class="fgbw-flight-card">
-  //           <h4>${data.airline} (${data.flight_iata})</h4>
-  //           <p>Status: ${data.status.toUpperCase()}</p>
-
-  //           <div class="fgbw-flight-row">
-  //               <div>
-  //                   <strong>${data.departure_iata}</strong><br>
-  //                   ${data.departure_airport}<br>
-  //                   ${formatDate(data.departure_time)}
-  //               </div>
-
-  //               <div>
-  //                   ✈
-  //               </div>
-
-  //               <div>
-  //                   <strong>${data.arrival_iata}</strong><br>
-  //                   ${data.arrival_airport}<br>
-  //                   ${formatDate(data.arrival_time)}
-  //               </div>
-  //           </div>
-  //       </div>
-  //   `;
-  // }
-
-  // function renderFlightCard(data) {
-  //   const $result = this.$root.find(".fgbw__flight-result");
-
-  //   $result.html(`
-  //   <div class="fgbw-flight-card">
-  //     <div class="fgbw-flight-card__top">
-  //       <strong>${data.airline} (${data.flight_iata})</strong>
-  //       <span class="fgbw-flight-badge">${data.status?.toUpperCase() || ""}</span>
-  //     </div>
-
-  //     <div class="fgbw-flight-card__row">
-  //       <div>
-  //         <strong>${data.departure_iata}</strong><br>
-  //         ${data.departure_airport}<br>
-  //         ${data.departure_time}
-  //       </div>
-
-  //       <div>✈</div>
-
-  //       <div>
-  //         <strong>${data.arrival_iata}</strong><br>
-  //         ${data.arrival_airport}<br>
-  //         ${data.arrival_time}
-  //       </div>
-  //     </div>
-  //   </div>
-  // `);
-  // }
 
   function formatDate(dateStr) {
     const d = new Date(dateStr);
