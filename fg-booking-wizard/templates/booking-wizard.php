@@ -6,8 +6,7 @@
 
     <div class="fgbw__steps">
       <div class="fgbw__step-indicator is-active" data-step-ind="1">Request Information</div>
-      <div class="fgbw__step-indicator" data-step-ind="2">Choose Vehicle</div>
-      <div class="fgbw__step-indicator" data-step-ind="3">Confirm</div>
+      <div class="fgbw__step-indicator" data-step-ind="2">Quote Request</div>
     </div>
 
     <!-- STEP 1 -->
@@ -120,48 +119,118 @@
       </div>
     </section>
 
-    <!-- STEP 2 -->
+    <!-- STEP 2: Quote Request (Confirmation) -->
     <section class="fgbw__step" data-step="2">
-      <div class="fgbw__vehicles" data-vehicles></div>
-      <div class="fgbw__error" data-error-for="vehicle"></div>
+      <div class="fgbw__quote-container">
+        <!-- Left Side: Summary -->
+        <div class="fgbw__quote-left">
+           <div class="fgbw__summary-header" data-summary-header></div>
 
-      <div class="fgbw__actions">
-        <button type="button" class="fgbw__btn" data-prev>Back</button>
-        <button type="button" class="fgbw__btn fgbw__btn--primary" data-next>Next</button>
+           <div class="fgbw__timeline-wrap">
+              <div class="fgbw__timeline" data-summary-timeline></div>
+           </div>
+
+           <div class="fgbw__add-info">
+             <div class="fgbw__add-info-head">
+                <h3>Additional Trip Info</h3>
+                <button type="button" class="fgbw__edit-lnk" data-prev>Edit <i class="fa fa-pencil"></i></button>
+             </div>
+             <div class="fgbw__add-info-grid" data-summary-additional></div>
+           </div>
+        </div>
+
+        <!-- Right Side: Contact & Luggage -->
+        <div class="fgbw__quote-right">
+           <div class="fgbw__luggage-sect">
+              <h3>Luggage Count</h3>
+              <div class="fgbw__lr-row">
+                 <span>Carry-On</span>
+                 <div class="fgbw__qty fgbw__qty--sm" data-qty-for="lug_carry">
+                   <button type="button" class="fgbw__qty-btn" data-qty-minus>-</button>
+                   <input type="text" class="fgbw__qty-input" value="0" readonly />
+                   <button type="button" class="fgbw__qty-btn" data-qty-plus>+</button>
+                 </div>
+              </div>
+              <div class="fgbw__lr-row">
+                 <span>Checked</span>
+                 <div class="fgbw__qty fgbw__qty--sm" data-qty-for="lug_checked">
+                   <button type="button" class="fgbw__qty-btn" data-qty-minus>-</button>
+                   <input type="text" class="fgbw__qty-input" value="0" readonly />
+                   <button type="button" class="fgbw__qty-btn" data-qty-plus>+</button>
+                 </div>
+              </div>
+              <div class="fgbw__lr-row">
+                 <span>Oversize</span>
+                 <div class="fgbw__qty fgbw__qty--sm" data-qty-for="lug_oversize">
+                   <button type="button" class="fgbw__qty-btn" data-qty-minus>-</button>
+                   <input type="text" class="fgbw__qty-input" value="0" readonly />
+                   <button type="button" class="fgbw__qty-btn" data-qty-plus>+</button>
+                 </div>
+              </div>
+           </div>
+
+           <div class="fgbw__contact-sect">
+              <h3>Booking Contact</h3>
+
+              <div class="fgbw__row">
+                 <!-- Simple phone input for now -->
+                 <input type="tel" class="fgbw__input" name="phone" placeholder="+1 Phone Number" required />
+              </div>
+
+              <div class="fgbw__row">
+                 <input type="email" class="fgbw__input" name="email" placeholder="Email *" required />
+              </div>
+
+              <div class="fgbw__row fgbw__flex-row">
+                 <input type="text" class="fgbw__input" name="first_name" placeholder="First name *" required />
+                 <input type="text" class="fgbw__input" name="last_name" placeholder="Last name *" required />
+              </div>
+           </div>
+
+           <div class="fgbw__actions fgbw__actions--col">
+             <button type="button" class="fgbw__btn fgbw__btn--primary fgbw__btn--full" data-submit>
+               <span class="fgbw__btn-text">Send Request</span>
+               <span class="fgbw__spinner is-hidden" aria-hidden="true"></span>
+             </button>
+             <div class="fgbw__disclaimer">
+               By clicking "Send Request" you agree to receive order updates via SMS/Email.
+             </div>
+           </div>
+
+           <div class="fgbw__toast is-hidden" data-toast></div>
+        </div>
       </div>
     </section>
 
-    <!-- STEP 3 -->
+    <!-- STEP 3: Success Screen -->
     <section class="fgbw__step" data-step="3">
-      <div class="fgbw__summary" data-summary></div>
-
-      <div class="fgbw__row fgbw__contact">
-        <div class="fgbw__col">
-          <label class="fgbw__label">Name</label>
-          <input type="text" class="fgbw__input" name="name" required />
-          <div class="fgbw__error" data-error-for="name"></div>
+      <div class="fgbw__success-screen">
+        <div class="fgbw__success-icon">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
         </div>
-        <div class="fgbw__col">
-          <label class="fgbw__label">Email</label>
-          <input type="email" class="fgbw__input" name="email" required />
-          <div class="fgbw__error" data-error-for="email"></div>
+        <h2 class="fgbw__success-title">Thank You for Your Booking!</h2>
+        <p class="fgbw__success-message">
+          Your booking request has been successfully submitted.
+        </p>
+        <div class="fgbw__success-details">
+          <div class="fgbw__detail-row">
+            <span class="fgbw__detail-label">Booking ID:</span>
+            <span class="fgbw__detail-value" data-booking-id></span>
+          </div>
+          <div class="fgbw__detail-row">
+            <span class="fgbw__detail-label">Confirmation Email:</span>
+            <span class="fgbw__detail-value" data-confirmation-email></span>
+          </div>
         </div>
-        <div class="fgbw__col">
-          <label class="fgbw__label">Phone</label>
-          <input type="tel" class="fgbw__input" name="phone" required />
-          <div class="fgbw__error" data-error-for="phone"></div>
+        <p class="fgbw__success-notice">
+          We've sent confirmation emails to both you and our admin team. We'll review your request and get back to you shortly with a quote.
+        </p>
+        <div class="fgbw__success-actions">
+          <button type="button" class="fgbw__btn fgbw__btn--primary" data-new-booking>Create Another Booking</button>
         </div>
       </div>
-
-      <div class="fgbw__actions">
-        <button type="button" class="fgbw__btn" data-prev>Back</button>
-        <button type="button" class="fgbw__btn fgbw__btn--primary" data-submit>
-          <span class="fgbw__btn-text">Confirm Booking</span>
-          <span class="fgbw__spinner is-hidden" aria-hidden="true"></span>
-        </button>
-      </div>
-
-      <div class="fgbw__toast is-hidden" data-toast></div>
     </section>
   </form>
 </div>

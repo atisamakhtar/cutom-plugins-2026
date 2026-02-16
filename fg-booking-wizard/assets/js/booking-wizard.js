@@ -506,6 +506,7 @@
           lng: place.geometry.location.lng(),
           place_id: place.place_id
         };
+        this.emit();
       });
     }
 
@@ -649,7 +650,7 @@
       if (!s) return "-";
       const d = new Date(s);
       if (isNaN(d.getTime())) return s;
-      return d.toLocaleString();
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
   }
@@ -669,6 +670,7 @@
         },
         vehicle: "",
         contact: { name: "", email: "", phone: "" },
+        luggage: { carry: 0, checked: 0, oversize: 0 }
       };
 
       this.blocks = {
@@ -676,6 +678,9 @@
         round_pickup: { pickup: null, dropoff: null, stops: [] },
         round_return: { pickup: null, dropoff: null, stops: [] },
       };
+
+      this.$root.on("click", "[data-next]", () => this.next());
+      this.$root.on("click", "[data-prev]", () => this.prev());
 
       this.init();
     }
@@ -696,6 +701,7 @@
       this.initLocationBlocks();
       this.initStops();
       this.initVehicles();
+      this.initLuggage();
       this.bindNavButtons();
       this.applyTripTypeUI();
     }
@@ -795,6 +801,30 @@
         () => this.state.trip.return.passenger_count,
         (v) => (this.state.trip.return.passenger_count = v)
       );
+    }
+
+    initLuggage() {
+      const bindLug = (key) => {
+        const $wrap = this.$root.find(`[data-qty-for="lug_${key}"]`);
+        if (!$wrap.length) return;
+
+        const $input = $wrap.find(".fgbw__qty-input");
+        const sync = () => $input.val(this.state.luggage[key]);
+
+        $wrap.on("click", "[data-qty-plus]", () => {
+          this.state.luggage[key]++;
+          sync();
+        });
+
+        $wrap.on("click", "[data-qty-minus]", () => {
+          this.state.luggage[key] = Math.max(0, this.state.luggage[key] - 1);
+          sync();
+        });
+      };
+
+      bindLug("carry");
+      bindLug("checked");
+      bindLug("oversize");
     }
 
     initLocationBlocks() {
@@ -915,28 +945,74 @@
     }
 
     initVehicles() {
-      const $wrap = this.$root.find("[data-vehicles]");
-      const items = FGBW.vehicles || [];
-      const html = items.map(v => `
-        <label class="fgbw__vehicle">
-          <input type="radio" name="vehicle" value="${v.id}">
-          <div class="fgbw__vehicle-card">
-            <div class="fgbw__vehicle-name">${v.name}</div>
-            <div class="fgbw__vehicle-meta">${v.desc || ""} • Seats: ${v.seats || ""}</div>
-          </div>
-        </label>
-      `).join("");
-      $wrap.html(html);
-
-      $wrap.on("change", 'input[name="vehicle"]', () => {
-        this.state.vehicle = $wrap.find('input[name="vehicle"]:checked').val() || "";
-      });
+      // Kept empty or basic for compatibility, but logic removed visually in HTML
     }
 
     bindNavButtons() {
       this.$root.on("click", "[data-next]", () => this.next());
       this.$root.on("click", "[data-prev]", () => this.prev());
       this.$root.on("click", "[data-submit]", () => this.submit());
+      this.$root.on("click", "[data-new-booking]", () => this.resetForm());
+    }
+
+    resetForm() {
+      // Reset to initial state
+      this.step = 1;
+      this.state = {
+        trip_type: "one_way",
+        order_type: "",
+        trip: {
+          pickup: this.emptySegment(),
+          return: this.emptySegment(),
+        },
+        vehicle: "",
+        contact: { name: "", email: "", phone: "" },
+        luggage: { carry: 0, checked: 0, oversize: 0 }
+      };
+
+      // Reset form fields
+      this.$root.find('input[type="text"], input[type="email"], input[type="tel"], textarea').val('');
+      this.$root.find('select').val('').trigger('change');
+      this.$root.find('input[type="checkbox"]').prop('checked', false);
+
+      // Clear location blocks
+      Object.values(this.blocks).forEach(segment => {
+        Object.values(segment).forEach(block => {
+          if (block && block.getValue) {
+            block.state = {
+              mode: "address",
+              address: null,
+              airport: null,
+              airline: null,
+              flight: "",
+              noFlightInfo: false,
+              passenger_count: 1,
+              note: ""
+            };
+            block.render();
+            block.bind();
+          }
+        });
+      });
+
+      // Clear stops
+      this.blocks.oneway.stops = [];
+      this.blocks.round_pickup.stops = [];
+      this.blocks.round_return.stops = [];
+
+      // Reset UI
+      this.$root.find('[data-stops-list="oneway"], [data-stops-list="round_pickup"], [data-stops-list="round_return"]').empty();
+      this.$root.find('.fgbw__toggle-btn').removeClass("is-active").first().addClass("is-active");
+
+      // Generate new submission token
+      const tok = uid("subm");
+      this.$root.find(".fgbw__submission_token").val(tok);
+
+      // Clear errors
+      clearErrors();
+
+      // Go to step 1
+      this.goTo(1);
     }
 
     goTo(step) {
@@ -948,61 +1024,72 @@
       this.$root.find(`[data-step-ind="${step}"]`).addClass("is-active");
       clearErrors();
 
-      if (step === 3) this.renderSummary();
+      // Scroll top
+      $('html, body').animate({ scrollTop: this.$root.offset().top - 100 }, 300);
+
+      if (step === 2) this.renderSummary();
     }
 
+    // next() {
+    //   if (!this.validateStep(this.step)) return;
+    //   this.goTo(Math.min(2, this.step + 1));
+    // }
+
     next() {
-      if (!this.validateStep(this.step)) return;
-      this.goTo(Math.min(3, this.step + 1));
+      const isValid = this.validateStep(this.step);
+      console.log("Validation result:", isValid);
+
+      if (!isValid) return;
+
+      this.goTo(Math.min(2, this.step + 1));
     }
+
 
     prev() {
       this.goTo(Math.max(1, this.step - 1));
     }
 
     validateStep(step) {
-      clearErrors();
-
       if (step === 1) {
         if (!this.state.order_type) {
-          setError("order_type", "Please select an order type.");
+          this.toast("Please select an order type.", true);
           return false;
         }
 
         if (this.state.trip_type === "one_way") {
           if (!this.state.trip.pickup.datetime) {
-            setError("oneway_datetime", "Date & time is required.");
+            this.toast("Date & time is required.", true);
             return false;
           }
-          if (!this.isLocationValid(this.state.trip.pickup.pickup)) return false;
-          if (!this.isLocationValid(this.state.trip.pickup.dropoff)) return false;
+          if (!this.isLocationValid(this.state.trip.pickup.pickup, "Pick-Up")) return false;
+          if (!this.isLocationValid(this.state.trip.pickup.dropoff, "Drop-Off")) return false;
           if (this.state.trip.pickup.passenger_count < 1) {
-            setError("oneway_passengers", "Passenger count must be at least 1.");
+            this.toast("Passenger count must be at least 1.", true);
             return false;
           }
         } else {
           // Round pickup segment
           if (!this.state.trip.pickup.datetime) {
-            setError("round_pickup_datetime", "Pick-up date & time is required.");
+            this.toast("Pick-up date & time is required.", true);
             return false;
           }
-          if (!this.isLocationValid(this.state.trip.pickup.pickup)) return false;
-          if (!this.isLocationValid(this.state.trip.pickup.dropoff)) return false;
+          if (!this.isLocationValid(this.state.trip.pickup.pickup, "Pick-Up")) return false;
+          if (!this.isLocationValid(this.state.trip.pickup.dropoff, "Drop-Off")) return false;
 
           // Round return segment
           if (!this.state.trip.return.datetime) {
-            setError("round_return_datetime", "Return date & time is required.");
+            this.toast("Return date & time is required.", true);
             return false;
           }
-          if (!this.isLocationValid(this.state.trip.return.pickup, "round_return")) return false;
-          if (!this.isLocationValid(this.state.trip.return.dropoff, "round_return")) return false;
+          if (!this.isLocationValid(this.state.trip.return.pickup, "Return Pick-Up")) return false;
+          if (!this.isLocationValid(this.state.trip.return.dropoff, "Return Drop-Off")) return false;
 
           if (this.state.trip.pickup.passenger_count < 1) {
-            setError("round_pickup_passengers", "Passenger count must be at least 1.");
+            this.toast("Passenger count must be at least 1.", true);
             return false;
           }
           if (this.state.trip.return.passenger_count < 1) {
-            setError("round_return_passengers", "Passenger count must be at least 1.");
+            this.toast("Passenger count must be at least 1.", true);
             return false;
           }
         }
@@ -1011,43 +1098,37 @@
       }
 
       if (step === 2) {
-        if (!this.state.vehicle) {
-          setError("vehicle", "Please choose a vehicle.");
-          return false;
-        }
-        return true;
-      }
-
-      if (step === 3) {
-        const name = this.$root.find('input[name="name"]').val().trim();
+        const name = this.$root.find('input[name="first_name"]').val().trim() + ' ' + this.$root.find('input[name="last_name"]').val().trim();
         const email = this.$root.find('input[name="email"]').val().trim();
         const phone = this.$root.find('input[name="phone"]').val().trim();
 
         this.state.contact = { name, email, phone };
 
-        if (!name) { setError("name", "Name is required."); return false; }
-        if (!email || !/^\S+@\S+\.\S+$/.test(email)) { setError("email", "Valid email is required."); return false; }
-        if (!phone) { setError("phone", "Phone is required."); return false; }
+        if (!name.trim()) { this.toast("Name is required", true); return false; }
+        if (!email || !/^\S+@\S+\.\S+$/.test(email)) { this.toast("Valid email is required", true); return false; }
+        if (!phone) { this.toast("Phone is required", true); return false; }
+
         return true;
       }
 
       return true;
     }
 
-    isLocationValid(loc, scope = "oneway") {
+    isLocationValid(loc, label = "Location") {
       // loc example = { mode, address | airport ... }
       if (!loc || !loc.mode) {
-        setError(scope === "oneway" ? "oneway_datetime" : "round_pickup_datetime", "Please complete locations.");
+        this.toast(`Please complete the ${label}.`, true);
         return false;
       }
+
       if (loc.mode === "address") {
-        if (!loc.address || !loc.address.place_id) {
-          setError("order_type", "Please select a valid address from suggestions.");
+        if (!loc.address || !loc.address.formatted_address) {
+          this.toast(`Please select a valid address for ${label}.`, true);
           return false;
         }
       } else {
         if (!loc.airport || !loc.airport.iata_code) {
-          setError("order_type", "Please select an airport.");
+          this.toast(`Please select an airport for ${label}.`, true);
           return false;
         }
       }
@@ -1055,38 +1136,118 @@
     }
 
     renderSummary() {
-      const $sum = this.$root.find("[data-summary]");
-      const tripType = this.state.trip_type === "one_way" ? "One Way" : "Round Trip";
+      // Use state data, not block values which are partial
+      const trip = this.state.trip.pickup;
 
-      const segToText = (seg, label) => {
-        const pickup = this.locToText(seg.pickup);
-        const dropoff = this.locToText(seg.dropoff);
-        const stops = (seg.stops || []).filter(Boolean).map(s => this.locToText(s)).join(" → ");
-        return `
-          <div class="fgbw__sum-block">
-            <div class="fgbw__sum-title">${label}</div>
-            <div class="fgbw__sum-line"><strong>Date/Time:</strong> ${seg.datetime || "-"}</div>
-            <div class="fgbw__sum-line"><strong>Pick-Up:</strong> ${pickup}</div>
-            ${stops ? `<div class="fgbw__sum-line"><strong>Stops:</strong> ${stops}</div>` : ""}
-            <div class="fgbw__sum-line"><strong>Drop-Off:</strong> ${dropoff}</div>
-            <div class="fgbw__sum-line"><strong>Passengers:</strong> ${seg.passenger_count}</div>
-          </div>
-        `;
+      const isRound = this.state.trip_type === "round_trip";
+      const tripTitle = isRound ? "Round Trip" : "One Way";
+      const totalPax = Math.max(1, parseInt(trip.passenger_count || 1));
+
+      // Date Formatting: Wednesday, Feb 18th, 2026 7:44 PM
+      const dateObj = trip.datetime ? new Date(trip.datetime) : null;
+      let dateStr = "Select Date";
+      let timeStr = "";
+      if (dateObj && !isNaN(dateObj.getTime())) {
+        const day = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+        const month = dateObj.toLocaleDateString('en-US', { month: 'short' });
+        const dNum = dateObj.getDate();
+        const year = dateObj.getFullYear();
+        // ordinal suffix
+        const suffix = (dNum > 3 && dNum < 21) ? 'th' : ['th', 'st', 'nd', 'rd'][dNum % 10] || 'th';
+
+        timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        dateStr = `${day}, ${month} ${dNum}${suffix}, ${year} ${timeStr}`;
+      }
+
+      // Header Icons (dummy data for visual match)
+      const headerIcons = `
+        <div class="fgbw__sum-meta-icons">
+           <span class="fgbw__meta-icon"><i class="fa fa-bell-slash-o"></i></span>
+           <span class="fgbw__meta-icon"><i class="fa fa-clock-o"></i> N/A <i class="fa fa-bolt fgbw__text-green"></i></span>
+           <span class="fgbw__meta-icon"><i class="fa fa-user-o"></i> ${totalPax}</span>
+        </div>
+      `;
+
+      const headerHtml = `
+         <div class="fgbw__sum-main-title">
+            <h2>${tripTitle}</h2>
+            ${headerIcons}
+         </div>
+         <div class="fgbw__sum-date-label">PICK-UP DATE & TIME</div>
+         <div class="fgbw__sum-date-val">${dateStr}</div>
+      `;
+      this.$root.find("[data-summary-header]").html(headerHtml);
+
+      // Timeline Logic
+      const getAddr = (loc) => {
+        if (!loc) return "Select Location";
+        if (loc.mode === 'airport') return `<span class="fgbw__addr-main">${loc.airport.airport_name}</span> <span class="fgbw__addr-sub">(${loc.airport.iata_code})</span>`;
+        return loc.address ? `<span class="fgbw__addr-main">${loc.address.formatted_address.split(',')[0]}</span>` : "Select Location";
       };
 
-      const pickupSeg = this.state.trip.pickup;
-      const returnSeg = this.state.trip.return;
+      const mkTimeLineItem = (type, loc, isLast) => {
+        const colorClass = type === 'pickup' ? 'fgbw__marker--orange' : (type === 'dropoff' ? 'fgbw__marker--purple' : 'fgbw__marker--black');
+        const label = type === 'pickup' ? 'PICK-UP' : (type === 'dropoff' ? 'DROP-OFF' : 'STOP');
 
-      const html = `
-        <div class="fgbw__sum-head">
-          <div><strong>Trip Type:</strong> ${tripType}</div>
-          <div><strong>Order Type:</strong> ${this.state.order_type}</div>
-          <div><strong>Vehicle:</strong> ${this.state.vehicle}</div>
-        </div>
-        ${segToText(pickupSeg, this.state.trip_type === "one_way" ? "One Way" : "Round Trip: Pick-Up")}
-        ${this.state.trip_type === "round_trip" ? segToText(returnSeg, "Round Trip: Return") : ""}
+        // Extras below address
+        let extras = "";
+        if (type === 'pickup' && loc && loc.mode === 'airport') {
+          extras = `<div class="fgbw__tl-extra"><i class="fa fa-plane"></i> ${loc.flight || 'Flight info'}</div>`;
+        }
+        else if (type === 'dropoff') {
+          extras = `<div class="fgbw__tl-extra"><i class="fa fa-clock-o"></i> ${timeStr} <i class="fa fa-bolt fgbw__text-green"></i></div>`;
+        }
+
+        return `
+            <div class="fgbw__tl-item ${type}">
+               <div class="fgbw__tl-marker ${colorClass}"></div>
+               <div class="fgbw__tl-content">
+                  <div class="fgbw__tl-label">${label}</div>
+                  <div class="fgbw__tl-val">${getAddr(loc)}</div>
+                  ${extras}
+               </div>
+            </div>
+         `;
+      };
+
+      let timelineHtml = `<div class="fgbw__tl-line"></div>`;
+      timelineHtml += mkTimeLineItem('pickup', trip.pickup);
+
+      if (trip.stops && trip.stops.length) {
+        trip.stops.forEach(stop => {
+          timelineHtml += mkTimeLineItem('stop', stop);
+        });
+      }
+
+      timelineHtml += mkTimeLineItem('dropoff', trip.dropoff, true);
+      this.$root.find("[data-summary-timeline]").html(timelineHtml);
+
+
+      // Additional Info Grid
+      const luggageCount = (this.state.luggage.carry || 0) + (this.state.luggage.checked || 0) + (this.state.luggage.oversize || 0);
+
+      const addGridHtml = `
+         <div class="fgbw__ainfo-col">
+            <label>PASSENGER COUNT</label>
+            <div>${totalPax}</div>
+         </div>
+         <div class="fgbw__ainfo-col">
+            <label>PASSENGER CONTACT</label>
+            <div>-</div> <!-- placeholder until filled -->
+         </div>
+         <div class="fgbw__ainfo-col">
+            <label>LUGGAGE COUNT</label>
+            <div>${luggageCount}</div>
+         </div>
+         <div class="fgbw__ainfo-col">
+            <label>TRIP NOTE</label>
+            <div>-</div>
+         </div>
       `;
-      $sum.html(html);
+      this.$root.find("[data-summary-additional]").html(addGridHtml);
+
+      // Bind Edit Link
+      this.$root.find(".fgbw__edit-lnk").off("click").on("click", () => this.prev());
     }
 
     locToText(loc) {
@@ -1098,7 +1259,7 @@
     }
 
     async submit() {
-      if (!this.validateStep(3)) return;
+      if (!this.validateStep(2)) return;
 
       const hp = this.$root.find('input[name="company_hp"]').val().trim();
       if (hp) return; // honeypot: silent drop
@@ -1111,10 +1272,11 @@
       const payload = {
         trip_type: this.state.trip_type,
         order_type: this.state.order_type,
-        vehicle: this.state.vehicle,
+        vehicle: this.state.vehicle, // May be empty
         name: this.state.contact.name,
         email: this.state.contact.email,
         phone: this.state.contact.phone,
+        luggage: this.state.luggage,
         submission_token: this.$root.find(".fgbw__submission_token").val(),
         trip: this.state.trip,
       };
@@ -1130,7 +1292,10 @@
           return;
         }
 
-        this.toast(`Booking confirmed. ID: ${res.data.booking_id}`, false);
+        // Show success screen with booking details
+        this.$root.find('[data-booking-id]').text(res.data.booking_id || "");
+        this.$root.find('[data-confirmation-email]').text(this.state.contact.email);
+        this.goTo(3);
       } catch (e) {
         this.toast("Submission failed. Please try again.", true);
       } finally {
@@ -1152,6 +1317,20 @@
     if (!$root.length) return;
     $root.each((_, el) => new BookingWizard($(el)));
   });
+
+  // $(function () {
+  //   const $root = $(".fgbw");
+  //   if (!$root.length) return;
+
+  //   $root.each((_, el) => {
+  //     const instance = new BookingWizard($(el));
+
+  //     // expose for debugging
+  //     window.fgbwInstance = instance;
+
+  //     console.log("Wizard initialized:", instance);
+  //   });
+  // });
 
   // document.querySelector('.fgbw-confirm-btn').addEventListener('click', function () {
 

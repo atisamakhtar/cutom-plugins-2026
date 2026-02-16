@@ -22,6 +22,8 @@ class FGBW_Plugin {
     }
 }
 
+// /* run this to import in the db domain.tld/wp-admin/?fg_import_airports=1 */
+
 // add_action('admin_init', function() {
 
 //     if (!current_user_can('manage_options')) return;
@@ -35,6 +37,8 @@ class FGBW_Plugin {
 //         wp_die('Airports Imported Successfully');
 //     }
 // });
+
+// /* run this to import in the db domain.tld/wp-admin/?fg_import_airlines=1 */
 
 // add_action('admin_init', function() {
 
