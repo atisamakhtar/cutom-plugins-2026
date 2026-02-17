@@ -1349,9 +1349,9 @@
       const phone = this.$root.find('input[name="phone"]').val().trim();
       this.state.contact = { name: (first + " " + last).trim(), email, phone };
 
-      console.log("Contact state:", JSON.stringify(this.state.contact));
-      console.log("Trip state:", JSON.stringify(this.state.trip));
-      console.log("Order type:", this.state.order_type, "| Trip type:", this.state.trip_type);
+      // console.log("Contact state:", JSON.stringify(this.state.contact));
+      // console.log("Trip state:", JSON.stringify(this.state.trip));
+      // console.log("Order type:", this.state.order_type, "| Trip type:", this.state.trip_type);
 
       if (!this.validateStep(this.step)) {
         console.log("validateStep(" + this.step + ") FAILED - check toast message");
