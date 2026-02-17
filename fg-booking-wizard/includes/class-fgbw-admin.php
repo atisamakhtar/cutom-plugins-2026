@@ -608,7 +608,8 @@ class FGBW_Admin {
 		$where_sql = implode( ' AND ', $where );
 
 		$sql  = "SELECT booking_id, created_at, name, email, phone, trip_type,
-		                order_type, passenger_count, vehicle
+		                order_type, passenger_count, vehicle,
+		                pickup_json, return_json
 		         FROM   {$table}
 		         WHERE  {$where_sql}
 		         ORDER  BY created_at DESC";
@@ -635,12 +636,31 @@ class FGBW_Admin {
 		// 7. Write CSV rows directly to php://output (no temp file needed).
 		$handle = fopen( 'php://output', 'w' );
 
+		// Header row — mirrors the columns visible in the Bookings admin table,
+		// including the Route column which is parsed from pickup_json / return_json.
 		fputcsv( $handle, [
 			'ID', 'Date', 'Name', 'Email', 'Phone',
 			'Trip Type', 'Order Type', 'Passengers', 'Vehicle',
+			'Pickup From', 'Drop-Off To',
+			'Return From', 'Return To',
+			'Pickup DateTime', 'Return DateTime',
 		] );
 
 		foreach ( $rows as $r ) {
+			// Decode the same JSON blobs that render_page() uses to build the Route column.
+			$pickup_data = json_decode( $r['pickup_json'] ?? '{}', true ) ?: [];
+			$return_data = json_decode( $r['return_json'] ?? '{}', true ) ?: [];
+
+			// Pickup segment — structure: { pickup: {...}, dropoff: {...}, datetime: '...' }
+			$pickup_from     = self::loc_label( $pickup_data['pickup']  ?? null );
+			$pickup_to       = self::loc_label( $pickup_data['dropoff'] ?? null );
+			$pickup_datetime = $pickup_data['datetime'] ?? '';
+
+			// Return segment — only populated for round trips.
+			$return_from     = self::loc_label( $return_data['pickup']  ?? null );
+			$return_to       = self::loc_label( $return_data['dropoff'] ?? null );
+			$return_datetime = $return_data['datetime'] ?? '';
+
 			fputcsv( $handle, [
 				$r['booking_id'],
 				$r['created_at'],
@@ -651,6 +671,12 @@ class FGBW_Admin {
 				$r['order_type'],
 				$r['passenger_count'],
 				$r['vehicle'],
+				$pickup_from,
+				$pickup_to,
+				$return_from,      // empty string for one-way bookings
+				$return_to,        // empty string for one-way bookings
+				$pickup_datetime,
+				$return_datetime,  // empty string for one-way bookings
 			] );
 		}
 
