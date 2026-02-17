@@ -53,3 +53,11 @@ class FGBW_Plugin {
 //         wp_die('Airlines Imported Successfully');
 //     }
 // });
+
+// **** run this query if you found duplicated records in db *** //
+
+/* DELETE t1
+FROM wp_fg_airports t1
+JOIN wp_fg_airports t2
+ON t1.airport_name = t2.airport_name
+AND t1.id > t2.id; */
