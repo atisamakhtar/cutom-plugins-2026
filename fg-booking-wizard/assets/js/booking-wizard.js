@@ -949,6 +949,13 @@
     // }
 
     bindNavButtons() {
+      // Clear individual field errors as user starts correcting them
+      this.$root.on("input change", 'input[name="first_name"], input[name="last_name"], input[name="email"], input[name="phone"]', (e) => {
+        const $inp = $(e.currentTarget);
+        $inp.removeClass("fgbw__input--error");
+        $inp.next(".fgbw__field-error").text("").hide();
+      });
+
       this.$root.on("click", "[data-next]", (e) => {
         e.preventDefault();
         this.next();
@@ -1064,100 +1071,145 @@
       this.goTo(Math.max(1, this.step - 1));
     }
 
+    // ---- Field-level error helpers ----
+    fieldError($input, msg) {
+      // Find or create an error <span> immediately after the input
+      let $err = $input.next(".fgbw__field-error");
+      if (!$err.length) {
+        $err = $('<span class="fgbw__field-error"></span>').insertAfter($input);
+      }
+      if (msg) {
+        $input.addClass("fgbw__input--error");
+        $err.text(msg).show();
+        if (!this._firstErrorFocused) {
+          $input[0].focus();
+          this._firstErrorFocused = true;
+        }
+      } else {
+        $input.removeClass("fgbw__input--error");
+        $err.text("").hide();
+      }
+    }
+
+    clearFieldErrors() {
+      this.$root.find(".fgbw__field-error").text("").hide();
+      this.$root.find(".fgbw__input--error").removeClass("fgbw__input--error");
+      this.$root.find(".fgbw__input--error, .fgbw__address, .fgbw__airport, .fgbw__datetime")
+        .removeClass("fgbw__input--error");
+    }
+
     validateStep(step) {
+      this._firstErrorFocused = false;
+      this.clearFieldErrors();
+      let valid = true;
+
       if (step === 1) {
+        // Order type
+        const $orderSel = this.$root.find(".fgbw__order_type");
         if (!this.state.order_type) {
-          this.toast("Please select an order type.", true);
-          return false;
+          this.fieldError($orderSel, "Please select an order type.");
+          valid = false;
         }
 
         if (this.state.trip_type === "one_way") {
+          const $dt = this.$root.find('[data-datetime-for="oneway"]');
           if (!this.state.trip.pickup.datetime) {
-            this.toast("Date & time is required.", true);
-            return false;
+            this.fieldError($dt, "Date & time is required.");
+            valid = false;
           }
-          if (!this.isLocationValid(this.state.trip.pickup.pickup, "Pick-Up")) return false;
-          if (!this.isLocationValid(this.state.trip.pickup.dropoff, "Drop-Off")) return false;
-          if (this.state.trip.pickup.passenger_count < 1) {
-            this.toast("Passenger count must be at least 1.", true);
-            return false;
-          }
+          if (!this.isLocationFieldValid(this.state.trip.pickup.pickup,  "oneway_pickup",  "Pick-Up location is required."))  valid = false;
+          if (!this.isLocationFieldValid(this.state.trip.pickup.dropoff, "oneway_dropoff", "Drop-off location is required.")) valid = false;
+
         } else {
-          // Round pickup segment
+          const $dtPickup = this.$root.find('[data-datetime-for="round_pickup"]');
+          const $dtReturn = this.$root.find('[data-datetime-for="round_return"]');
+
           if (!this.state.trip.pickup.datetime) {
-            this.toast("Pick-up date & time is required.", true);
-            return false;
+            this.fieldError($dtPickup, "Pick-up date & time is required.");
+            valid = false;
           }
-          if (!this.isLocationValid(this.state.trip.pickup.pickup, "Pick-Up")) return false;
-          if (!this.isLocationValid(this.state.trip.pickup.dropoff, "Drop-Off")) return false;
+          if (!this.isLocationFieldValid(this.state.trip.pickup.pickup,  "round_pickup_pickup",  "Pick-up location is required."))  valid = false;
+          if (!this.isLocationFieldValid(this.state.trip.pickup.dropoff, "round_pickup_dropoff", "Drop-off location is required.")) valid = false;
 
-          // Round return segment
           if (!this.state.trip.return.datetime) {
-            this.toast("Return date & time is required.", true);
-            return false;
+            this.fieldError($dtReturn, "Return date & time is required.");
+            valid = false;
           }
-          if (!this.isLocationValid(this.state.trip.return.pickup, "Return Pick-Up")) return false;
-          if (!this.isLocationValid(this.state.trip.return.dropoff, "Return Drop-Off")) return false;
-
-          if (this.state.trip.pickup.passenger_count < 1) {
-            this.toast("Passenger count must be at least 1.", true);
-            return false;
-          }
-          if (this.state.trip.return.passenger_count < 1) {
-            this.toast("Passenger count must be at least 1.", true);
-            return false;
-          }
+          if (!this.isLocationFieldValid(this.state.trip.return.pickup,  "round_return_pickup",  "Return pick-up location is required."))  valid = false;
+          if (!this.isLocationFieldValid(this.state.trip.return.dropoff, "round_return_dropoff", "Return drop-off location is required.")) valid = false;
         }
 
-        return true;
+        if (!valid) this.toast("Please fix the errors highlighted in red.", true);
+        return valid;
       }
 
       if (step === 2) {
+        const $phone = this.$root.find('input[name="phone"]');
+        const $email = this.$root.find('input[name="email"]');
+        const $first = this.$root.find('input[name="first_name"]');
+        const $last  = this.$root.find('input[name="last_name"]');
 
-        // FIX: Read contact from this.state.contact (already set by submit() before calling us)
-        // rather than re-reading from DOM here. This prevents double-read bugs and makes
-        // validateStep() a pure validator with no side effects.
-        const nameParts = (this.state.contact.name || "").split(" ");
-        const first = nameParts[0] || "";
-        const last  = nameParts.slice(1).join(" ") || "";
+        const name  = this.state.contact.name  || "";
         const email = this.state.contact.email || "";
         const phone = this.state.contact.phone || "";
+        const parts = name.split(" ");
+        const first = parts[0] || "";
+        const last  = parts.slice(1).join(" ") || "";
 
-        if (!first) { this.toast("First name is required", true); return false; }
-        if (!last) { this.toast("Last name is required", true); return false; }
-        if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-          this.toast("Valid email is required", true);
-          return false;
+        if (!first) {
+          this.fieldError($first, "First name is required.");
+          valid = false;
         }
-        if (!phone) { this.toast("Phone is required", true); return false; }
+        if (!last) {
+          this.fieldError($last, "Last name is required.");
+          valid = false;
+        }
+        if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+          this.fieldError($email, "Please enter a valid email address.");
+          valid = false;
+        }
+        if (!phone) {
+          this.fieldError($phone, "Phone number is required.");
+          valid = false;
+        }
 
-        return true;
+        if (!valid) this.toast("Please fix the errors highlighted in red.", true);
+        return valid;
       }
 
       return true;
     }
 
-    isLocationValid(loc, label = "Location") {
-      // Accept: (1) Google Places selection, (2) freehand typed text, (3) airport selection
-      if (!loc || !loc.mode) {
-        this.toast("Please complete the " + label + ".", true);
+    // Validates a location block and shows a red error under its address/airport input
+    isLocationFieldValid(loc, blockAttr, msg) {
+      const $block = this.$root.find('[data-location-block="' + blockAttr + '"]');
+      const mode   = loc ? loc.mode : null;
+
+      if (!loc || !mode) {
+        const $inp = $block.find(".fgbw__address");
+        this.fieldError($inp, msg);
         return false;
       }
-      if (loc.mode === "address") {
+
+      if (mode === "address") {
         const hasPlaces  = loc.address && loc.address.formatted_address;
         const hasRawText = loc._rawText && loc._rawText.trim().length > 0;
         if (!hasPlaces && !hasRawText) {
-          this.toast("Please enter an address for " + label + ".", true);
+          const $inp = $block.find(".fgbw__address");
+          this.fieldError($inp, msg);
           return false;
         }
       } else {
         if (!loc.airport || !loc.airport.iata_code) {
-          this.toast("Please select an airport for " + label + ".", true);
+          const $inp = $block.find(".fgbw__airport");
+          this.fieldError($inp, "Please select an airport.");
           return false;
         }
       }
       return true;
     }
+
+    // isLocationValid replaced by isLocationFieldValid (inline field errors)
 
     renderSummary() {
       // Use state data, not block values which are partial

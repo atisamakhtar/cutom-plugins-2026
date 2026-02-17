@@ -6,6 +6,7 @@ require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-ajax.php';
 require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-shortcode.php';
 require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-email.php';
 require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-airport-importer.php';
+require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-admin.php';
 
 class FGBW_Plugin {
     private static $instance = null;
@@ -17,6 +18,7 @@ class FGBW_Plugin {
 
     public function init(): void {
         (new FGBW_Settings())->init();
+        (new FGBW_Admin())->init();
         (new FGBW_AJAX())->init();
         (new FGBW_Shortcode())->init();
     }
@@ -53,11 +55,3 @@ class FGBW_Plugin {
 //         wp_die('Airlines Imported Successfully');
 //     }
 // });
-
-// **** run this query if you found duplicated records in db *** //
-
-/* DELETE t1
-FROM wp_fg_airports t1
-JOIN wp_fg_airports t2
-ON t1.airport_name = t2.airport_name
-AND t1.id > t2.id; */

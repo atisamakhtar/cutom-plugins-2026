@@ -1,6 +1,14 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
+/**
+ * Hook into wp_mail_failed to catch ALL mail errors regardless of SMTP plugin.
+ * Logs to WordPress debug log when WP_DEBUG + WP_DEBUG_LOG are enabled.
+ */
+add_action('wp_mail_failed', function(WP_Error $error) {
+    error_log('[FGBW Email] wp_mail_failed: ' . implode(', ', $error->get_error_messages()));
+});
+
 class FGBW_Email {
     private static function placeholders(int $booking_id, array $payload): array {
         $name = sanitize_text_field($payload['name'] ?? '');
@@ -63,34 +71,80 @@ class FGBW_Email {
         return strtr($content, $ph);
     }
 
+    /**
+     * Log email results to WordPress debug log.
+     * Enable by adding to wp-config.php:
+     *   define('WP_DEBUG', true);
+     *   define('WP_DEBUG_LOG', true);
+     */
+    private static function log(string $msg): void {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[FGBW Email] ' . $msg);
+        }
+    }
+
     public static function send_customer(int $booking_id, array $payload): void {
         $to = sanitize_email($payload['email'] ?? '');
-        if (!$to) return;
 
-        $ph = self::placeholders($booking_id, $payload);
+        self::log("send_customer called. Booking #{$booking_id}. To: '{$to}'");
 
+        if (!$to) {
+            self::log("send_customer ABORTED: empty or invalid customer email.");
+            return;
+        }
+
+        $ph   = self::placeholders($booking_id, $payload);
         $subj = fgbw_get_option('email_customer_subject', 'Your booking #{booking_id} is received');
         $body = fgbw_get_option('email_customer_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/customer.php'));
 
         $subj = self::apply_placeholders($subj, $ph);
         $body = self::apply_placeholders($body, $ph);
 
-        wp_mail($to, $subj, $body, ['Content-Type: text/html; charset=UTF-8']);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+
+        self::log("send_customer calling wp_mail(). Subject: '{$subj}'");
+
+        $result = wp_mail($to, $subj, $body, $headers);
+
+        if ($result) {
+            self::log("send_customer wp_mail() returned TRUE for {$to}. Check spam folder if not received.");
+        } else {
+            global $phpmailer;
+            $error = isset($phpmailer) ? $phpmailer->ErrorInfo : 'Unknown error — phpmailer not available';
+            self::log("send_customer wp_mail() FAILED for {$to}. Error: {$error}");
+        }
     }
 
     public static function send_admin(int $booking_id, array $payload): void {
         $to = fgbw_get_option('admin_email', get_option('admin_email'));
         $to = sanitize_email($to);
-        if (!$to) return;
 
-        $ph = self::placeholders($booking_id, $payload);
+        self::log("send_admin called. Booking #{$booking_id}. To: '{$to}'");
 
+        if (!$to) {
+            self::log("send_admin ABORTED: empty or invalid admin email.");
+            return;
+        }
+
+        $ph   = self::placeholders($booking_id, $payload);
         $subj = fgbw_get_option('email_admin_subject', 'New booking #{booking_id} received');
         $body = fgbw_get_option('email_admin_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/admin.php'));
 
         $subj = self::apply_placeholders($subj, $ph);
         $body = self::apply_placeholders($body, $ph);
 
-        wp_mail($to, $subj, $body, ['Content-Type: text/html; charset=UTF-8']);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+
+        self::log("send_admin calling wp_mail(). Subject: '{$subj}'");
+
+        $result = wp_mail($to, $subj, $body, $headers);
+
+        if ($result) {
+            self::log("send_admin wp_mail() returned TRUE for {$to}. Check spam folder if not received.");
+        } else {
+            global $phpmailer;
+            $error = isset($phpmailer) ? $phpmailer->ErrorInfo : 'Unknown error — phpmailer not available';
+            self::log("send_admin wp_mail() FAILED for {$to}. Error: {$error}");
+        }
     }
 }

@@ -1038,3 +1038,26 @@
     min-width: 200px;
   }
 }
+
+/* ---- Inline field validation errors ---- */
+.fgbw__field-error {
+  display: none;
+  font-size: 12px;
+  color: #b91c1c;
+  margin-top: 5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.fgbw__input--error,
+.fgbw__input--error.fgbw__address,
+.fgbw__input--error.fgbw__airport,
+.fgbw__input--error.fgbw__datetime {
+  border-color: #b91c1c !important;
+  box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.12) !important;
+}
+
+/* Make Select2 wrapper show error state */
+.fgbw__input--error + .select2-container .select2-selection {
+  border-color: #b91c1c !important;
+}

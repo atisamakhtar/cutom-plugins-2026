@@ -1,0 +1,456 @@
+/* ============================================================
+   FG Booking Wizard — Admin Panel Styles
+   ============================================================ */
+
+/* ---- Page wrapper ---- */
+.fgbw-admin-wrap {
+  max-width: 1400px;
+}
+
+.fgbw-admin-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  margin-bottom: 24px !important;
+}
+
+.fgbw-admin-title .dashicons {
+  font-size: 26px;
+  color: #2271b1;
+}
+
+.fgbw-export-btn {
+  margin-left: auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px !important;
+  text-decoration: none !important;
+}
+
+/* ---- Cards ---- */
+.fgbw-card {
+  background: #fff;
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+
+.fgbw-card--table {
+  padding: 0;
+  overflow: hidden;
+}
+
+.fgbw-card-title {
+  margin: 0 0 20px !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.fgbw-card-title .dashicons {
+  color: #2271b1;
+}
+
+.fgbw-section-subtitle {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #50575e;
+  margin: 20px 0 10px !important;
+  padding-top: 16px;
+  border-top: 1px solid #f0f2f5;
+}
+
+.fgbw-placeholders-note {
+  background: #f0f6ff;
+  border: 1px solid #c5d9f0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  line-height: 1.8;
+}
+
+.fgbw-placeholders-note code {
+  background: #e4edf8;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  margin: 0 2px;
+}
+
+/* ---- Form table ---- */
+.fgbw-form-table th {
+  width: 220px !important;
+  padding: 14px 10px 14px 0 !important;
+  font-weight: 600 !important;
+  vertical-align: top !important;
+}
+
+.fgbw-form-table td {
+  padding: 10px 0 !important;
+}
+
+.fgbw-save-row {
+  padding: 4px 0 12px;
+}
+
+/* ---- Badges ---- */
+.fgbw-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.fgbw-badge--blue   { background: #dbeafe; color: #1d4ed8; }
+.fgbw-badge--green  { background: #dcfce7; color: #166534; }
+.fgbw-badge--gray   { background: #f3f4f6; color: #374151; }
+.fgbw-badge--orange { background: #fff7ed; color: #c2410c; }
+
+/* ---- Filters Bar ---- */
+.fgbw-filters-bar {
+  background: #fff;
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+
+.fgbw-filters-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+}
+
+.fgbw-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 140px;
+}
+
+.fgbw-filter-group label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #50575e;
+  letter-spacing: .4px;
+}
+
+.fgbw-filter-input,
+.fgbw-filter-select {
+  height: 34px;
+  border: 1px solid #c5c9cd !important;
+  border-radius: 6px !important;
+  padding: 0 10px !important;
+  font-size: 13px;
+  background: #fff;
+  min-width: 150px;
+  box-sizing: border-box;
+}
+
+.fgbw-filter-input:focus,
+.fgbw-filter-select:focus {
+  border-color: #2271b1 !important;
+  box-shadow: 0 0 0 1px #2271b1 !important;
+  outline: none;
+}
+
+.fgbw-filter-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding-bottom: 2px;
+}
+
+/* ---- Stats row ---- */
+.fgbw-stats-row {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.fgbw-stat-pill {
+  background: #fff;
+  border: 1px solid #e0e4e8;
+  border-radius: 8px;
+  padding: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+}
+
+.fgbw-stat-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1d2327;
+  line-height: 1;
+}
+
+.fgbw-stat-label {
+  font-size: 11px;
+  color: #50575e;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+/* ---- Table ---- */
+.fgbw-table-scroll {
+  overflow-x: auto;
+}
+
+.fgbw-table {
+  border-collapse: collapse !important;
+  width: 100%;
+  font-size: 13px;
+}
+
+.fgbw-table thead th {
+  background: #f6f7f7;
+  padding: 12px 14px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #50575e;
+  border-bottom: 2px solid #e0e4e8 !important;
+  white-space: nowrap;
+}
+
+.fgbw-table tbody td {
+  padding: 12px 14px !important;
+  vertical-align: middle !important;
+  border-bottom: 1px solid #f0f2f5 !important;
+}
+
+.fgbw-table tbody tr:last-child td {
+  border-bottom: none !important;
+}
+
+.fgbw-table tbody tr:hover td {
+  background: #f9fafb;
+}
+
+.fgbw-customer-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fgbw-td-email {
+  font-size: 12px;
+  color: #2271b1;
+  text-decoration: none;
+}
+
+.fgbw-td-email:hover { text-decoration: underline; }
+
+.fgbw-td-phone {
+  font-size: 12px;
+  color: #50575e;
+}
+
+.fgbw-td-date {
+  white-space: nowrap;
+  font-size: 12px;
+  color: #50575e;
+}
+
+.fgbw-td-center {
+  text-align: center;
+}
+
+.fgbw-td-route {
+  max-width: 240px;
+  font-size: 13px;
+}
+
+.fgbw-route-from,
+.fgbw-route-to {
+  display: inline;
+}
+
+.fgbw-route-arrow {
+  color: #9ca3af;
+  margin: 0 4px;
+}
+
+/* ---- Pagination ---- */
+.fgbw-pagination {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 16px 20px;
+  border-top: 1px solid #f0f2f5;
+  flex-wrap: wrap;
+}
+
+.fgbw-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid #e0e4e8;
+  background: #fff;
+  text-decoration: none !important;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d2327;
+  transition: all .15s;
+}
+
+.fgbw-page-btn:hover {
+  background: #f0f6ff;
+  border-color: #2271b1;
+  color: #2271b1;
+}
+
+.fgbw-page-active {
+  background: #2271b1 !important;
+  border-color: #2271b1 !important;
+  color: #fff !important;
+}
+
+/* ---- Empty state ---- */
+.fgbw-empty-state {
+  text-align: center;
+  padding: 60px 30px;
+  color: #50575e;
+}
+
+.fgbw-empty-state .dashicons {
+  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  display: block;
+  margin: 0 auto 14px;
+  color: #c5c9cd;
+}
+
+.fgbw-empty-state p {
+  font-size: 15px;
+  margin: 0;
+}
+
+/* ---- Detail Modal ---- */
+.fgbw-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fgbw-modal-box {
+  background: #fff;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px rgba(0,0,0,.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.fgbw-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #f0f2f5;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+.fgbw-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.fgbw-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #50575e;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.fgbw-modal-close:hover {
+  background: #f3f4f6;
+  color: #1d2327;
+}
+
+.fgbw-modal-content {
+  padding: 20px 24px 28px;
+}
+
+.fgbw-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.fgbw-detail-table th,
+.fgbw-detail-table td {
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.fgbw-detail-table th {
+  width: 38%;
+  color: #50575e;
+  font-weight: 600;
+  background: #f9fafb;
+}
+
+.fgbw-detail-table td {
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.fgbw-detail-table tr:last-child th,
+.fgbw-detail-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fgbw-detail-btn {
+  font-size: 12px !important;
+  padding: 4px 12px !important;
+  height: auto !important;
+}
