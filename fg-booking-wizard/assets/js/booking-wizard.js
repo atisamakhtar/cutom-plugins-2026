@@ -1157,15 +1157,15 @@
         const last  = parts.slice(1).join(" ") || "";
 
         if (!first) {
-          setError("first_name", "First name is required.");
+          this.fieldError($first, "First name is required.");
           valid = false;
         }
         if (!last) {
-          setError("last_name", "Last name is required.");
+          this.fieldError($last, "Last name is required.");
           valid = false;
         }
         if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-          setError("email", "Please enter a valid email address.");
+          this.fieldError($email, "Please enter a valid email address.");
           valid = false;
         }
         if (!phone) {

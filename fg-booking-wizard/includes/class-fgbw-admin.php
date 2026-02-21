@@ -178,9 +178,11 @@ class FGBW_Admin {
 					</h2>
 					<p class="fgbw-placeholders-note">
 						<strong>Available placeholders:</strong>
-						<code>{booking_id}</code> <code>{name}</code> <code>{trip_type}</code>
+						<code>{booking_id}</code> <code>{name}</code> <code>{first_name}</code> <code>{last_name}</code>
+						<code>{email}</code> <code>{phone}</code> <code>{trip_type}</code>
 						<code>{order_type}</code> <code>{vehicle}</code> <code>{passenger_count}</code>
 						<code>{pickup_summary}</code> <code>{return_summary}</code>
+						<code>{carry_on}</code> <code>{checked}</code> <code>{oversize}</code>
 					</p>
 
 					<h3 class="fgbw-section-subtitle">Customer Email</h3>
