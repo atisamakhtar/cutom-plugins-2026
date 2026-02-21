@@ -90,21 +90,28 @@ class FGBW_Settings {
     public function field_customer_subject(): void {
         $v = esc_attr(fgbw_get_option('email_customer_subject', 'Your booking #{booking_id} is received'));
         echo "<input type='text' class='regular-text' name='fgbw_settings[email_customer_subject]' value='{$v}' />";
-        echo "<p class='description'>Placeholders: {booking_id} {name} {trip_type} {order_type} {pickup_summary} {return_summary} {vehicle} {passenger_count}</p>";
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize}';
+        echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 
     public function field_customer_body(): void {
         $v = fgbw_get_option('email_customer_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/customer.php'));
         echo "<textarea class='large-text' rows='10' name='fgbw_settings[email_customer_body]'>".esc_textarea($v)."</textarea>";
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize}';
+        echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 
     public function field_admin_subject(): void {
         $v = esc_attr(fgbw_get_option('email_admin_subject', 'New booking #{booking_id} received'));
         echo "<input type='text' class='regular-text' name='fgbw_settings[email_admin_subject]' value='{$v}' />";
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize}';
+        echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 
     public function field_admin_body(): void {
         $v = fgbw_get_option('email_admin_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/admin.php'));
         echo "<textarea class='large-text' rows='10' name='fgbw_settings[email_admin_body]'>".esc_textarea($v)."</textarea>";
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize}';
+        echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 }

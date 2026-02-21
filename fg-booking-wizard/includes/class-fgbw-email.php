@@ -23,6 +23,12 @@ class FGBW_Email {
         $first_name = $name_parts[0] ?? '';
         $last_name = $name_parts[1] ?? '';
 
+        // Extract luggage counts
+        $luggage = $payload['luggage'] ?? [];
+        $carry_on = (string) ((int)($luggage['carry_on'] ?? $luggage['carry'] ?? 0));
+        $checked = (string) ((int)($luggage['checked'] ?? 0));
+        $oversize = (string) ((int)($luggage['oversize'] ?? 0));
+
         $trip = $payload['trip'] ?? [];
         $pickup = $trip['pickup'] ?? [];
         $return = $trip['return'] ?? [];
@@ -45,6 +51,9 @@ class FGBW_Email {
             '{return_summary}' => $return_summary,
             '{vehicle}' => $vehicle,
             '{passenger_count}' => $passenger_count,
+            '{carry_on}' => $carry_on,
+            '{checked}' => $checked,
+            '{oversize}' => $oversize,
         ];
     }
 

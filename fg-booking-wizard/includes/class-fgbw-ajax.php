@@ -261,9 +261,9 @@ class FGBW_AJAX
         $email = sanitize_email(      $payload['email'] ?? '' );
         $phone = sanitize_text_field( $payload['phone'] ?? '' );
 
-        // Backend validation for phone (security - never trust frontend)
-        if ( ! $phone || ! preg_match( '/^\+\d{7,15}$/', $phone ) ) {
-            wp_send_json_error( [ 'message' => 'Invalid phone number format.' ] );
+        // Backend validation: phone is required only (no format restriction)
+        if ( ! $phone ) {
+            wp_send_json_error( [ 'message' => 'Phone number is required.' ] );
         }
 
         // Backend validation for email

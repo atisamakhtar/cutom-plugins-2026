@@ -950,7 +950,7 @@
 
     bindNavButtons() {
       // Clear individual field errors as user starts correcting them
-      this.$root.on("input change", 'input[name="first_name"], input[name="last_name"], input[name="email"], input[name="phone_number"], select[name="phone_country"]', (e) => {
+      this.$root.on("input change", 'input[name="first_name"], input[name="last_name"], input[name="email"], input[name="phone_number"]', (e) => {
         const $inp = $(e.currentTarget);
         $inp.removeClass("fgbw__input--error");
         $inp.next(".fgbw__field-error").text("").hide();
@@ -1157,19 +1157,19 @@
         const last  = parts.slice(1).join(" ") || "";
 
         if (!first) {
-          this.fieldError($first, "First name is required.");
+          setError("first_name", "First name is required.");
           valid = false;
         }
         if (!last) {
-          this.fieldError($last, "Last name is required.");
+          setError("last_name", "Last name is required.");
           valid = false;
         }
         if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-          this.fieldError($email, "Please enter a valid email address.");
+          setError("email", "Please enter a valid email address.");
           valid = false;
         }
-        if (!phone || !/^\+\d{7,15}$/.test(phone)) {
-          this.fieldError($phone, "Please enter a valid phone number (include country code).");
+        if (!phone) {
+          this.fieldError($phone, "Phone number is required.");
           valid = false;
         }
 
@@ -1346,10 +1346,8 @@
       const first = this.$root.find('input[name="first_name"]').val().trim();
       const last  = this.$root.find('input[name="last_name"]').val().trim();
       const email = this.$root.find('input[name="email"]').val().trim();
-      const country = this.$root.find('select[name="phone_country"]').val() || '';
       const rawPhone = this.$root.find('input[name="phone_number"]').val().trim() || '';
-      const normalized = country + rawPhone.replace(/\D/g, '');
-      this.state.contact = { name: (first + " " + last).trim(), email, phone: normalized };
+      this.state.contact = { name: (first + " " + last).trim(), email, phone: rawPhone };
 
       // console.log("Contact state:", JSON.stringify(this.state.contact));
       // console.log("Trip state:", JSON.stringify(this.state.trip));

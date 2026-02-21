@@ -50,19 +50,28 @@ class FGBW_DB
         ];
         $row = array_merge($defaults, $row);
 
-        $ok = $wpdb->insert($table, $row, [
-            '%s',
-            '%s',
-            '%s',
-            '%s',
-            '%s',
-            '%s',
-            '%d',
-            '%s',
-            '%s',
-            '%s',
-            '%s'
-        ]);
+        // Build format array keyed to actual row column order (not DB schema order).
+        // array_merge() puts defaults (created_at, pickup_json, return_json) first,
+        // so positional formats must match that merged order. Using a map prevents
+        // trip_type from being coerced to %d and saved as 0.
+        $format_map = [
+            'created_at'        => '%s',
+            'pickup_json'       => '%s',
+            'return_json'       => '%s',
+            'name'              => '%s',
+            'email'             => '%s',
+            'phone'             => '%s',
+            'trip_type'         => '%s',
+            'order_type'        => '%s',
+            'passenger_count'   => '%d',
+            'vehicle'           => '%s',
+            'full_payload_json' => '%s',
+        ];
+        $formats = [];
+        foreach ( array_keys( $row ) as $col ) {
+            $formats[] = $format_map[ $col ] ?? '%s';
+        }
+        $ok = $wpdb->insert( $table, $row, $formats );
 
         if (!$ok) return 0;
         return (int)$wpdb->insert_id;
