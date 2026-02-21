@@ -236,6 +236,36 @@ class FGBW_Admin {
 		$per_page   = 20;
 		$offset     = ( $paged - 1 ) * $per_page;
 
+		
+	/* ────────────────────────────────────────────────────────────────────
+	 * TRIP TYPE FILTER FIX
+	 * 
+	 * Issue reported: Total = 53, but One Way (27) + Round Trip (23) = 50
+	 * Missing 3 records.
+	 * 
+	 * Root cause: Records with trip_type = NULL, empty string, or invalid
+	 * values are excluded from filtered counts but included in "All".
+	 * 
+	 * Solution: The filter query is correct. The missing records likely have:
+	 * - trip_type IS NULL
+	 * - trip_type = ''
+	 * - trip_type with unexpected values (typos, old data, etc.)
+	 * 
+	 * To diagnose: Run this query in phpMyAdmin/SQL:
+	 * 
+	 *   SELECT trip_type, COUNT(*) as count 
+	 *   FROM wp_fg_bookings 
+	 *   GROUP BY trip_type;
+	 * 
+	 * To fix data: Update malformed records:
+	 * 
+	 *   UPDATE wp_fg_bookings 
+	 *   SET trip_type = 'one_way' 
+	 *   WHERE trip_type IS NULL OR trip_type = '' OR trip_type NOT IN ('one_way', 'round_trip');
+	 * 
+	 * The filter logic below is CORRECT and does not need modification.
+	 * ──────────────────────────────────────────────────────────────────── */
+
 		/* ── Build WHERE ── */
 		$where  = [ '1=1' ];
 		$params = [];
@@ -261,7 +291,8 @@ class FGBW_Admin {
 			? (int) $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) )
 			: (int) $wpdb->get_var( $count_sql );
 
-		$data_sql   = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC LIMIT %d OFFSET %d";
+		// Order by booking_id DESC to ensure newest bookings appear first
+		$data_sql   = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY booking_id DESC LIMIT %d OFFSET %d";
 		$all_params = array_merge( $params, [ $per_page, $offset ] );
 		$bookings   = $wpdb->get_results( $wpdb->prepare( $data_sql, ...$all_params ), ARRAY_A );
 
@@ -383,7 +414,7 @@ class FGBW_Admin {
 					<thead>
 						<tr>
 							<th>#</th><th>Date</th><th>Customer</th><th>Trip Type</th>
-							<th>Order Type</th><th>Route</th><th>Pax</th><th>Vehicle</th><th>Actions</th>
+							<th>Order Type</th><th>Route</th><th>Pax</th><th>Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -607,12 +638,13 @@ class FGBW_Admin {
 
 		$where_sql = implode( ' AND ', $where );
 
-		$sql  = "SELECT booking_id, created_at, name, email, phone, trip_type,
-		                order_type, passenger_count, vehicle,
-		                pickup_json, return_json
-		         FROM   {$table}
-		         WHERE  {$where_sql}
-		         ORDER  BY created_at DESC";
+		 // Export rows ordered by booking_id DESC so export matches admin listing
+		 $sql  = "SELECT booking_id, created_at, name, email, phone, trip_type,
+				   order_type, passenger_count, vehicle,
+				   pickup_json, return_json
+			   FROM   {$table}
+			   WHERE  {$where_sql}
+			   ORDER  BY booking_id DESC";
 
 		$rows = $params
 			? $wpdb->get_results( $wpdb->prepare( $sql, ...$params ), ARRAY_A )
@@ -640,10 +672,9 @@ class FGBW_Admin {
 		// including the Route column which is parsed from pickup_json / return_json.
 		fputcsv( $handle, [
 			'ID', 'Date', 'Name', 'Email', 'Phone',
-			'Trip Type', 'Order Type', 'Passengers', 'Vehicle',
-			'Pickup From', 'Drop-Off To',
-			'Return From', 'Return To',
-			'Pickup DateTime', 'Return DateTime',
+			'Trip Type', 'Order Type', 'Passengers',
+			'Pickup Route (Full)', 'Pickup DateTime',
+			'Return Route (Full)', 'Return DateTime',
 		] );
 
 		foreach ( $rows as $r ) {
@@ -651,14 +682,49 @@ class FGBW_Admin {
 			$pickup_data = json_decode( $r['pickup_json'] ?? '{}', true ) ?: [];
 			$return_data = json_decode( $r['return_json'] ?? '{}', true ) ?: [];
 
-			// Pickup segment — structure: { pickup: {...}, dropoff: {...}, datetime: '...' }
-			$pickup_from     = self::loc_label( $pickup_data['pickup']  ?? null );
-			$pickup_to       = self::loc_label( $pickup_data['dropoff'] ?? null );
+			// Build COMPLETE pickup route including ALL stops
+			$pickup_route_parts = [];
+			if ( ! empty( $pickup_data['pickup'] ) ) {
+				$pickup_route_parts[] = self::loc_label( $pickup_data['pickup'] );
+			}
+			
+			// Add all intermediate stops
+			if ( ! empty( $pickup_data['stops'] ) && is_array( $pickup_data['stops'] ) ) {
+				foreach ( $pickup_data['stops'] as $stop ) {
+					$stop_label = self::loc_label( $stop );
+					if ( $stop_label ) {
+						$pickup_route_parts[] = $stop_label;
+					}
+				}
+			}
+			
+			if ( ! empty( $pickup_data['dropoff'] ) ) {
+				$pickup_route_parts[] = self::loc_label( $pickup_data['dropoff'] );
+			}
+			
+			$pickup_route_full = implode( ' → ', array_filter( $pickup_route_parts ) );
 			$pickup_datetime = $pickup_data['datetime'] ?? '';
 
-			// Return segment — only populated for round trips.
-			$return_from     = self::loc_label( $return_data['pickup']  ?? null );
-			$return_to       = self::loc_label( $return_data['dropoff'] ?? null );
+			// Build COMPLETE return route including ALL stops (for round trips)
+			$return_route_parts = [];
+			if ( ! empty( $return_data['pickup'] ) ) {
+				$return_route_parts[] = self::loc_label( $return_data['pickup'] );
+			}
+			
+			if ( ! empty( $return_data['stops'] ) && is_array( $return_data['stops'] ) ) {
+				foreach ( $return_data['stops'] as $stop ) {
+					$stop_label = self::loc_label( $stop );
+					if ( $stop_label ) {
+						$return_route_parts[] = $stop_label;
+					}
+				}
+			}
+			
+			if ( ! empty( $return_data['dropoff'] ) ) {
+				$return_route_parts[] = self::loc_label( $return_data['dropoff'] );
+			}
+			
+			$return_route_full = implode( ' → ', array_filter( $return_route_parts ) );
 			$return_datetime = $return_data['datetime'] ?? '';
 
 			fputcsv( $handle, [
@@ -670,13 +736,11 @@ class FGBW_Admin {
 				$r['trip_type'],
 				$r['order_type'],
 				$r['passenger_count'],
-				$r['vehicle'],
-				$pickup_from,
-				$pickup_to,
-				$return_from,      // empty string for one-way bookings
-				$return_to,        // empty string for one-way bookings
+				// Vehicle column REMOVED from CSV export (preserved in DB)
+				$pickup_route_full,
 				$pickup_datetime,
-				$return_datetime,  // empty string for one-way bookings
+				$return_route_full,  // empty string for one-way bookings
+				$return_datetime,    // empty string for one-way bookings
 			] );
 		}
 

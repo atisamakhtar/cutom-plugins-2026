@@ -48,27 +48,22 @@ class FGBW_Shortcode {
     }
 
     private function order_type_groups(): array {
-        // Replace/extend with your “previously defined” groups.
-        // Structure supports Select2 optgroups.
+        // Return a single optgroup with the requested service labels.
         return [
             [
-                'label' => 'Airport',
+                'label' => 'Services',
                 'options' => [
-                    ['id' => 'airport_pickup', 'text' => 'Airport Pick-Up'],
-                    ['id' => 'airport_dropoff', 'text' => 'Airport Drop-Off'],
-                ],
-            ],
-            [
-                'label' => 'Birthday',
-                'options' => [
-                    ['id' => 'birthday_party', 'text' => 'Birthday Party'],
-                ],
-            ],
-            [
-                'label' => 'Corporate',
-                'options' => [
-                    ['id' => 'corporate_transfer', 'text' => 'Corporate Transfer'],
-                    ['id' => 'corporate_event', 'text' => 'Corporate Event'],
+                    ['id' => 'amtrak_transportation', 'text' => 'Amtrak Transportation'],
+                    ['id' => 'airport_transportation', 'text' => 'Airport Transportation'],
+                    ['id' => 'corporate_transportation', 'text' => 'Corporate Transportation'],
+                    ['id' => 'cruise_terminal_transportation', 'text' => 'Cruise Terminal Transportation'],
+                    ['id' => 'event_transportation', 'text' => 'Event Transportation'],
+                    ['id' => 'funeral_transportation', 'text' => 'Funeral Transportation'],
+                    ['id' => 'hourly_transportation', 'text' => 'Hourly Transportation'],
+                    ['id' => 'point_to_point_services', 'text' => 'Point to Point Services'],
+                    ['id' => 'prom_transportation', 'text' => 'Prom Transportation'],
+                    ['id' => 'sprinter_van_services', 'text' => 'Sprinter Van Services'],
+                    ['id' => 'wedding_transportation', 'text' => 'Wedding Transportation'],
                 ],
             ],
         ];

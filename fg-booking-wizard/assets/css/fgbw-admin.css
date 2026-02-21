@@ -454,3 +454,11 @@
   padding: 4px 12px !important;
   height: auto !important;
 }
+
+/* Hide Vehicle column visually in the Bookings table while preserving data
+   and functionality. This only affects presentation (CSS) so the column
+   remains available in the DOM and server-side logic. */
+.fgbw-table thead th:nth-child(8),
+.fgbw-table tbody td:nth-child(8) {
+  display: none;
+}

@@ -12,9 +12,16 @@ add_action('wp_mail_failed', function(WP_Error $error) {
 class FGBW_Email {
     private static function placeholders(int $booking_id, array $payload): array {
         $name = sanitize_text_field($payload['name'] ?? '');
+        $email = sanitize_email($payload['email'] ?? '');
+        $phone = sanitize_text_field($payload['phone'] ?? '');
         $trip_type = sanitize_text_field($payload['trip_type'] ?? '');
         $order_type = sanitize_text_field($payload['order_type'] ?? '');
         $vehicle = sanitize_text_field($payload['vehicle'] ?? '');
+
+        // Extract first and last name from full name
+        $name_parts = explode(' ', trim($name), 2);
+        $first_name = $name_parts[0] ?? '';
+        $last_name = $name_parts[1] ?? '';
 
         $trip = $payload['trip'] ?? [];
         $pickup = $trip['pickup'] ?? [];
@@ -28,6 +35,10 @@ class FGBW_Email {
         return [
             '{booking_id}' => (string)$booking_id,
             '{name}' => $name,
+            '{first_name}' => $first_name,
+            '{last_name}' => $last_name,
+            '{email}' => $email,
+            '{phone}' => $phone,
             '{trip_type}' => $trip_type,
             '{order_type}' => $order_type,
             '{pickup_summary}' => $pickup_summary,

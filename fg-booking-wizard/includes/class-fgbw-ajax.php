@@ -261,9 +261,34 @@ class FGBW_AJAX
         $email = sanitize_email(      $payload['email'] ?? '' );
         $phone = sanitize_text_field( $payload['phone'] ?? '' );
 
+        // Backend validation for phone (security - never trust frontend)
+        if ( ! $phone || ! preg_match( '/^\+\d{7,15}$/', $phone ) ) {
+            wp_send_json_error( [ 'message' => 'Invalid phone number format.' ] );
+        }
+
+        // Backend validation for email
+        if ( ! $email || ! is_email( $email ) ) {
+            wp_send_json_error( [ 'message' => 'Invalid email address.' ] );
+        }
+
         $trip   = $payload['trip']   ?? [];
         $pickup = $trip['pickup']    ?? [];
         $return = $trip['return']    ?? null;
+        
+        // Backend validation: Prevent past date bookings
+        if ( ! empty( $pickup['datetime'] ) ) {
+            $pickup_time = strtotime( $pickup['datetime'] );
+            if ( $pickup_time && $pickup_time < time() ) {
+                wp_send_json_error( [ 'message' => 'Pickup time cannot be in the past.' ] );
+            }
+        }
+        
+        if ( $return && ! empty( $return['datetime'] ) ) {
+            $return_time = strtotime( $return['datetime'] );
+            if ( $return_time && $return_time < time() ) {
+                wp_send_json_error( [ 'message' => 'Return time cannot be in the past.' ] );
+            }
+        }
 
         $row = [
             'name'             => $name,

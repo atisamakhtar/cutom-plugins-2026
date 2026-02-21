@@ -727,7 +727,7 @@
         data,
         width: "100%",
         placeholder: "Select order type",
-        allowClear: true,
+        allowClear: false,
       });
 
       $sel.on("change", () => {
@@ -950,7 +950,7 @@
 
     bindNavButtons() {
       // Clear individual field errors as user starts correcting them
-      this.$root.on("input change", 'input[name="first_name"], input[name="last_name"], input[name="email"], input[name="phone"]', (e) => {
+      this.$root.on("input change", 'input[name="first_name"], input[name="last_name"], input[name="email"], input[name="phone_number"], select[name="phone_country"]', (e) => {
         const $inp = $(e.currentTarget);
         $inp.removeClass("fgbw__input--error");
         $inp.next(".fgbw__field-error").text("").hide();
@@ -1144,7 +1144,7 @@
       }
 
       if (step === 2) {
-        const $phone = this.$root.find('input[name="phone"]');
+        const $phone = this.$root.find('input[name="phone_number"]');
         const $email = this.$root.find('input[name="email"]');
         const $first = this.$root.find('input[name="first_name"]');
         const $last  = this.$root.find('input[name="last_name"]');
@@ -1168,8 +1168,8 @@
           this.fieldError($email, "Please enter a valid email address.");
           valid = false;
         }
-        if (!phone) {
-          this.fieldError($phone, "Phone number is required.");
+        if (!phone || !/^\+\d{7,15}$/.test(phone)) {
+          this.fieldError($phone, "Please enter a valid phone number (include country code).");
           valid = false;
         }
 
@@ -1346,8 +1346,10 @@
       const first = this.$root.find('input[name="first_name"]').val().trim();
       const last  = this.$root.find('input[name="last_name"]').val().trim();
       const email = this.$root.find('input[name="email"]').val().trim();
-      const phone = this.$root.find('input[name="phone"]').val().trim();
-      this.state.contact = { name: (first + " " + last).trim(), email, phone };
+      const country = this.$root.find('select[name="phone_country"]').val() || '';
+      const rawPhone = this.$root.find('input[name="phone_number"]').val().trim() || '';
+      const normalized = country + rawPhone.replace(/\D/g, '');
+      this.state.contact = { name: (first + " " + last).trim(), email, phone: normalized };
 
       // console.log("Contact state:", JSON.stringify(this.state.contact));
       // console.log("Trip state:", JSON.stringify(this.state.trip));
