@@ -38,6 +38,24 @@ class FGBW_Email {
 
         $passenger_count = (string) ((int)($pickup['passenger_count'] ?? 1));
 
+        // Extract ZIP codes from pickup and return segments
+        $pickup_zip   = self::loc_zip($pickup['pickup']  ?? null);
+        $dropoff_zip  = self::loc_zip($pickup['dropoff'] ?? null);
+        $return_pickup_zip  = self::loc_zip($return['pickup']  ?? null);
+        $return_dropoff_zip = self::loc_zip($return['dropoff'] ?? null);
+
+        // Build stop zip summaries (e.g. "Stop 1: 90210, Stop 2: 10001")
+        $pickup_stops_zips = [];
+        foreach (($pickup['stops'] ?? []) as $i => $s) {
+            $z = self::loc_zip($s);
+            if ($z) $pickup_stops_zips[] = 'Stop ' . ($i + 1) . ': ' . $z;
+        }
+        $return_stops_zips = [];
+        foreach (($return['stops'] ?? []) as $i => $s) {
+            $z = self::loc_zip($s);
+            if ($z) $return_stops_zips[] = 'Stop ' . ($i + 1) . ': ' . $z;
+        }
+
         return [
             '{booking_id}' => (string)$booking_id,
             '{name}' => $name,
@@ -54,6 +72,12 @@ class FGBW_Email {
             '{carry_on}' => $carry_on,
             '{checked}' => $checked,
             '{oversize}' => $oversize,
+            '{pickup_zip}' => $pickup_zip,
+            '{dropoff_zip}' => $dropoff_zip,
+            '{return_pickup_zip}' => $return_pickup_zip,
+            '{return_dropoff_zip}' => $return_dropoff_zip,
+            '{pickup_stops_zips}' => implode(', ', $pickup_stops_zips),
+            '{return_stops_zips}' => implode(', ', $return_stops_zips),
         ];
     }
 
@@ -75,16 +99,24 @@ class FGBW_Email {
     private static function loc_summary($loc): string {
         if (!is_array($loc)) return '';
         $mode = $loc['mode'] ?? '';
+        $zip  = sanitize_text_field($loc['zip'] ?? '');
+        $zip_str = $zip ? " [ZIP: {$zip}]" : '';
         if ($mode === 'address') {
-            return sanitize_text_field($loc['address']['formatted_address'] ?? '');
+            return sanitize_text_field($loc['address']['formatted_address'] ?? '') . $zip_str;
         }
         if ($mode === 'airport') {
             $a = $loc['airport'] ?? [];
             $name = sanitize_text_field($a['airport_name'] ?? '');
             $iata = sanitize_text_field($a['iata_code'] ?? '');
-            return trim("{$name} ({$iata})");
+            return trim("{$name} ({$iata})") . $zip_str;
         }
         return '';
+    }
+
+    /** Extract zip from a location object safely */
+    private static function loc_zip($loc): string {
+        if (!is_array($loc)) return '';
+        return sanitize_text_field($loc['zip'] ?? '');
     }
 
     private static function apply_placeholders(string $content, array $ph): string {

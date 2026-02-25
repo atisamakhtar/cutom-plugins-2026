@@ -183,6 +183,9 @@ class FGBW_Admin {
 						<code>{order_type}</code> <code>{vehicle}</code> <code>{passenger_count}</code>
 						<code>{pickup_summary}</code> <code>{return_summary}</code>
 						<code>{carry_on}</code> <code>{checked}</code> <code>{oversize}</code>
+						<code>{pickup_zip}</code> <code>{dropoff_zip}</code>
+						<code>{return_pickup_zip}</code> <code>{return_dropoff_zip}</code>
+						<code>{pickup_stops_zips}</code> <code>{return_stops_zips}</code>
 					</p>
 
 					<h3 class="fgbw-section-subtitle">Customer Email</h3>
@@ -427,6 +430,11 @@ class FGBW_Admin {
 							$date  = $b['created_at'] ? date( 'M j, Y g:i a', strtotime( $b['created_at'] ) ) : '—';
 							$trip_label = $b['trip_type'] === 'round_trip' ? 'Round Trip' : 'One Way';
 							$trip_badge = $b['trip_type'] === 'round_trip' ? 'fgbw-badge--blue' : 'fgbw-badge--gray';
+							$pickup_zip        = $pickup_data['pickup']['zip']  ?? '';
+							$dropoff_zip       = $pickup_data['dropoff']['zip'] ?? '';
+							$return_data_modal = json_decode( $b['return_json'] ?? '{}', true );
+							$return_pickup_zip  = $return_data_modal['pickup']['zip']  ?? '';
+							$return_dropoff_zip = $return_data_modal['dropoff']['zip'] ?? '';
 						?>
 						<tr>
 							<td><strong>#<?php echo esc_html( $b['booking_id'] ); ?></strong></td>
@@ -466,6 +474,10 @@ class FGBW_Admin {
 										'to'         => $to   ?: '—',
 										'pickup_json'=> $b['pickup_json'],
 										'return_json'=> $b['return_json'],
+										'pickup_zip'        => $pickup_zip,
+										'dropoff_zip'       => $dropoff_zip,
+										'return_pickup_zip' => $return_pickup_zip,
+										'return_dropoff_zip'=> $return_dropoff_zip,
 									] ) ); ?>'>
 									View
 								</button>
@@ -523,25 +535,48 @@ class FGBW_Admin {
 						${row('Vehicle', b.vehicle)}
 						${row('Passengers', b.passengers)}
 						${row('Pick-Up', b.from)}
+						${b.pickup_zip ? row('Pick-Up ZIP', b.pickup_zip) : ''}
 						${row('Drop-Off', b.to)}
+						${b.dropoff_zip ? row('Drop-Off ZIP', b.dropoff_zip) : ''}
 					</table>`;
 
 				if (pickup.datetime) {
+					// Build stop rows for pickup segment
+					let stopRows = '';
+					if (pickup.stops && pickup.stops.length) {
+						pickup.stops.forEach((s, i) => {
+							const lbl = fgbwLocLabel(s);
+							const z   = s.zip || '';
+							if (lbl) stopRows += row(`Stop ${i+1}`, lbl + (z ? ` <span class="fgbw-zip-badge">ZIP: ${z}</span>` : ''));
+						});
+					}
 					html += `<h4 style="margin:16px 0 6px">Pickup Segment</h4>
 						<table class="fgbw-detail-table">
 							${row('Date / Time', pickup.datetime)}
-							${row('From', b.from)}
-							${row('To', b.to)}
+							${row('From', b.from + (b.pickup_zip ? ` <span class="fgbw-zip-badge">ZIP: ${b.pickup_zip}</span>` : ''))}
+							${stopRows}
+							${row('To', b.to + (b.dropoff_zip ? ` <span class="fgbw-zip-badge">ZIP: ${b.dropoff_zip}</span>` : ''))}
 						</table>`;
 				}
 				if (ret && ret.datetime) {
 					const retFrom = fgbwLocLabel(ret.pickup);
 					const retTo   = fgbwLocLabel(ret.dropoff);
+					const retFromZip = ret.pickup  ? (ret.pickup.zip  || '') : '';
+					const retToZip   = ret.dropoff ? (ret.dropoff.zip || '') : '';
+					let retStopRows = '';
+					if (ret.stops && ret.stops.length) {
+						ret.stops.forEach((s, i) => {
+							const lbl = fgbwLocLabel(s);
+							const z   = s.zip || '';
+							if (lbl) retStopRows += row(`Stop ${i+1}`, lbl + (z ? ` <span class="fgbw-zip-badge">ZIP: ${z}</span>` : ''));
+						});
+					}
 					html += `<h4 style="margin:16px 0 6px">Return Segment</h4>
 						<table class="fgbw-detail-table">
 							${row('Date / Time', ret.datetime)}
-							${row('From', retFrom)}
-							${row('To', retTo)}
+							${row('From', retFrom + (retFromZip ? ` <span class="fgbw-zip-badge">ZIP: ${retFromZip}</span>` : ''))}
+							${retStopRows}
+							${row('To', retTo + (retToZip ? ` <span class="fgbw-zip-badge">ZIP: ${retToZip}</span>` : ''))}
 						</table>`;
 				}
 
@@ -675,8 +710,10 @@ class FGBW_Admin {
 		fputcsv( $handle, [
 			'ID', 'Date', 'Name', 'Email', 'Phone',
 			'Trip Type', 'Order Type', 'Passengers',
-			'Pickup Route (Full)', 'Pickup DateTime',
-			'Return Route (Full)', 'Return DateTime',
+			'Pickup Route (Full)', 'Pickup DateTime', 'Pickup ZIP', 'Dropoff ZIP',
+			'Pickup Stop ZIPs',
+			'Return Route (Full)', 'Return DateTime', 'Return Pickup ZIP', 'Return Dropoff ZIP',
+			'Return Stop ZIPs',
 		] );
 
 		foreach ( $rows as $r ) {
@@ -705,7 +742,17 @@ class FGBW_Admin {
 			}
 			
 			$pickup_route_full = implode( ' → ', array_filter( $pickup_route_parts ) );
-			$pickup_datetime = $pickup_data['datetime'] ?? '';
+			$pickup_datetime   = $pickup_data['datetime'] ?? '';
+
+			// ZIP codes for pickup segment
+			$pickup_zip  = $pickup_data['pickup']['zip']  ?? '';
+			$dropoff_zip = $pickup_data['dropoff']['zip'] ?? '';
+			$pickup_stop_zips = [];
+			foreach ( ( $pickup_data['stops'] ?? [] ) as $i => $s ) {
+				$z = $s['zip'] ?? '';
+				if ( $z ) $pickup_stop_zips[] = 'Stop ' . ( $i + 1 ) . ': ' . $z;
+			}
+			$pickup_stops_zips_str = implode( ', ', $pickup_stop_zips );
 
 			// Build COMPLETE return route including ALL stops (for round trips)
 			$return_route_parts = [];
@@ -727,7 +774,17 @@ class FGBW_Admin {
 			}
 			
 			$return_route_full = implode( ' → ', array_filter( $return_route_parts ) );
-			$return_datetime = $return_data['datetime'] ?? '';
+			$return_datetime   = $return_data['datetime'] ?? '';
+
+			// ZIP codes for return segment
+			$return_pickup_zip  = $return_data['pickup']['zip']  ?? '';
+			$return_dropoff_zip = $return_data['dropoff']['zip'] ?? '';
+			$return_stop_zips = [];
+			foreach ( ( $return_data['stops'] ?? [] ) as $i => $s ) {
+				$z = $s['zip'] ?? '';
+				if ( $z ) $return_stop_zips[] = 'Stop ' . ( $i + 1 ) . ': ' . $z;
+			}
+			$return_stops_zips_str = implode( ', ', $return_stop_zips );
 
 			fputcsv( $handle, [
 				$r['booking_id'],
@@ -738,11 +795,16 @@ class FGBW_Admin {
 				$r['trip_type'],
 				$r['order_type'],
 				$r['passenger_count'],
-				// Vehicle column REMOVED from CSV export (preserved in DB)
 				$pickup_route_full,
 				$pickup_datetime,
-				$return_route_full,  // empty string for one-way bookings
-				$return_datetime,    // empty string for one-way bookings
+				$pickup_zip,
+				$dropoff_zip,
+				$pickup_stops_zips_str,
+				$return_route_full,
+				$return_datetime,
+				$return_pickup_zip,
+				$return_dropoff_zip,
+				$return_stops_zips_str,
 			] );
 		}
 

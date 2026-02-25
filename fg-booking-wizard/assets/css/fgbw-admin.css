@@ -462,3 +462,18 @@
 .fgbw-table tbody td:nth-child(8) {
   display: none;
 }
+
+/* ZIP badge in booking detail modal */
+.fgbw-zip-badge {
+  display: inline-block;
+  background: #f0f4ff;
+  color: #3b5bdb;
+  border: 1px solid #bac8ff;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  letter-spacing: 0.5px;
+}

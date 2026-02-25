@@ -206,6 +206,7 @@
       this.state = {
         mode: "address", // address | airport
         address: null,   // { formatted_address, lat, lng, place_id }
+        zip: "",         // US zip code for both address and airport modes
         airport: null,   // { iata_code, airport_name, country_name, city }
         airline: null,   // { iata_code, airline_name }
         flight: "",
@@ -254,6 +255,9 @@
               <label class="fgbw__label">Address</label>
               <input type="text" class="fgbw__input fgbw__address" placeholder="Enter address" />
               <div class="fgbw__hint">Powered by Google Places</div>
+              <label class="fgbw__label fgbw__zip-label">ZIP Code <span class="fgbw__req">*</span></label>
+              <input type="text" class="fgbw__input fgbw__zip" placeholder="e.g. 90210" maxlength="10" />
+              <div class="fgbw__field-error fgbw__zip-error" style="display:none;"></div>
             </div>
 
             <!-- Airport Mode -->
@@ -290,6 +294,10 @@
 
               <div class="fgbw-flight-result"></div>
 
+              <label class="fgbw__label fgbw__zip-label" style="margin-top:12px;">ZIP Code <span class="fgbw__req">*</span></label>
+              <input type="text" class="fgbw__input fgbw__zip" placeholder="e.g. 90210" maxlength="10" />
+              <div class="fgbw__field-error fgbw__zip-error" style="display:none;"></div>
+
               <div class="fgbw__loader is-hidden" data-loader></div>
             </div>
           </div>
@@ -316,6 +324,22 @@
 
       this.$airport.on("input", debounce(() => this.searchAirport(), 250));
       this.$airline.on("input", debounce(() => this.searchAirline(), 250));
+
+      // Zip code binding — shared across both panes
+      this.$root.on("input", ".fgbw__zip", (e) => {
+        const raw = $(e.currentTarget).val().trim();
+        this.state.zip = raw;
+        // Live format hint: auto-insert hyphen after 5 digits for zip+4
+        const digits = raw.replace(/\D/g, "");
+        if (digits.length > 5) {
+          $(e.currentTarget).val(digits.slice(0, 5) + "-" + digits.slice(5, 9));
+          this.state.zip = $(e.currentTarget).val().trim();
+        }
+        // Clear error on input
+        this.$root.find(".fgbw__zip-error").hide().text("");
+        this.$root.find(".fgbw__zip").removeClass("fgbw__input--error");
+        this.emit();
+      });
 
       this.$flight.on("input", () => {
         this.state.flight = this.$flight.val().trim();
@@ -565,6 +589,7 @@
 
     getValue() {
       const out = { mode: this.state.mode };
+      out.zip = this.state.zip || "";
       if (this.state.mode === "address") {
         out.address = this.state.address; // set by Google Places, or null if freehand
         // _rawText captures whatever the user typed even without a Places selection
@@ -1004,6 +1029,7 @@
             block.state = {
               mode: "address",
               address: null,
+              zip: "",
               airport: null,
               airline: null,
               flight: "",
@@ -1093,6 +1119,7 @@
 
     clearFieldErrors() {
       this.$root.find(".fgbw__field-error").text("").hide();
+      this.$root.find(".fgbw__zip-error").text("").hide();
       this.$root.find(".fgbw__input--error").removeClass("fgbw__input--error");
       this.$root.find(".fgbw__input--error, .fgbw__address, .fgbw__airport, .fgbw__datetime")
         .removeClass("fgbw__input--error");
@@ -1191,22 +1218,49 @@
         return false;
       }
 
+      let locValid = true;
+
       if (mode === "address") {
         const hasPlaces  = loc.address && loc.address.formatted_address;
         const hasRawText = loc._rawText && loc._rawText.trim().length > 0;
         if (!hasPlaces && !hasRawText) {
           const $inp = $block.find(".fgbw__address");
           this.fieldError($inp, msg);
-          return false;
+          locValid = false;
         }
       } else {
         if (!loc.airport || !loc.airport.iata_code) {
           const $inp = $block.find(".fgbw__airport");
           this.fieldError($inp, "Please select an airport.");
-          return false;
+          locValid = false;
         }
       }
-      return true;
+
+      // Validate ZIP code (US: 5 digits or ZIP+4 format: 12345-6789)
+      const zip = (loc.zip || "").trim();
+      const $zipInput = $block.find(".fgbw__zip").filter(":visible");
+      const $zipError = $block.find(".fgbw__zip-error").filter(":visible");
+      const zipValid  = /^\d{5}(-\d{4})?$/.test(zip);
+
+      if (!zip) {
+        $zipInput.addClass("fgbw__input--error");
+        $zipError.text("ZIP code is required.").show();
+        if (!this._firstErrorFocused && locValid) {
+          $zipInput[0] && $zipInput[0].focus();
+          this._firstErrorFocused = true;
+        }
+        locValid = false;
+      } else if (!zipValid) {
+        $zipInput.addClass("fgbw__input--error");
+        $zipError.text("Please enter a valid US ZIP code (e.g. 90210 or 90210-1234).").show();
+        if (!this._firstErrorFocused && locValid) {
+          $zipInput[0] && $zipInput[0].focus();
+          this._firstErrorFocused = true;
+        }
+        locValid = false;
+      }
+
+      return locValid;
     }
 
     // isLocationValid replaced by isLocationFieldValid (inline field errors)
