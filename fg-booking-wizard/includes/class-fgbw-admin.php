@@ -186,17 +186,32 @@ class FGBW_Admin {
 						<code>{pickup_zip}</code> <code>{dropoff_zip}</code>
 						<code>{return_pickup_zip}</code> <code>{return_dropoff_zip}</code>
 						<code>{pickup_stops_zips}</code> <code>{return_stops_zips}</code>
+						<code>{additional_note}</code>
 					</p>
 
 					<h3 class="fgbw-section-subtitle">Customer Email</h3>
 					<table class="form-table fgbw-form-table">
 						<tr>
 							<th>Subject</th>
-							<td><input type="text" class="large-text" name="fgbw_settings[email_customer_subject]" value="<?php echo $cs; ?>" /></td>
+							<td>
+								<input type="text" class="large-text" name="fgbw_settings[email_customer_subject]" value="<?php echo $cs; ?>" />
+								<p class="description">You can use any of the placeholders listed above in this subject line.</p>
+							</td>
 						</tr>
 						<tr>
 							<th>Body <span class="fgbw-badge fgbw-badge--gray">HTML allowed</span></th>
-							<td><textarea class="large-text code" rows="10" name="fgbw_settings[email_customer_body]"><?php echo $cb; ?></textarea></td>
+							<td>
+								<textarea class="large-text code" rows="10" name="fgbw_settings[email_customer_body]"><?php echo $cb; ?></textarea>
+								<p class="description">
+									Use placeholders to personalise this email. For example:<br>
+									<code>{first_name}</code> — customer's first name &nbsp;|&nbsp;
+									<code>{phone}</code> — phone number &nbsp;|&nbsp;
+									<code>{pickup_summary}</code> — full pick-up details &nbsp;|&nbsp;
+									<code>{carry_on}</code> <code>{checked}</code> <code>{oversize}</code> — luggage counts &nbsp;|&nbsp;
+									<code>{pickup_zip}</code> <code>{dropoff_zip}</code> — ZIP codes &nbsp;|&nbsp;
+									<strong><code>{additional_note}</code> — any extra note left by the customer</strong>
+								</p>
+							</td>
 						</tr>
 					</table>
 
@@ -204,11 +219,26 @@ class FGBW_Admin {
 					<table class="form-table fgbw-form-table">
 						<tr>
 							<th>Subject</th>
-							<td><input type="text" class="large-text" name="fgbw_settings[email_admin_subject]" value="<?php echo $as; ?>" /></td>
+							<td>
+								<input type="text" class="large-text" name="fgbw_settings[email_admin_subject]" value="<?php echo $as; ?>" />
+								<p class="description">You can use any of the placeholders listed above in this subject line.</p>
+							</td>
 						</tr>
 						<tr>
 							<th>Body <span class="fgbw-badge fgbw-badge--gray">HTML allowed</span></th>
-							<td><textarea class="large-text code" rows="10" name="fgbw_settings[email_admin_body]"><?php echo $ab; ?></textarea></td>
+							<td>
+								<textarea class="large-text code" rows="10" name="fgbw_settings[email_admin_body]"><?php echo $ab; ?></textarea>
+								<p class="description">
+									Use placeholders to personalise this email. For example:<br>
+									<code>{name}</code> — full customer name &nbsp;|&nbsp;
+									<code>{email}</code> — customer email &nbsp;|&nbsp;
+									<code>{phone}</code> — phone number &nbsp;|&nbsp;
+									<code>{trip_type}</code> <code>{order_type}</code> — trip details &nbsp;|&nbsp;
+									<code>{pickup_summary}</code> <code>{return_summary}</code> — route summaries &nbsp;|&nbsp;
+									<code>{pickup_zip}</code> <code>{dropoff_zip}</code> — ZIP codes &nbsp;|&nbsp;
+									<strong><code>{additional_note}</code> — any extra note left by the customer</strong>
+								</p>
+							</td>
 						</tr>
 					</table>
 				</div>
@@ -419,7 +449,7 @@ class FGBW_Admin {
 					<thead>
 						<tr>
 							<th>#</th><th>Date</th><th>Customer</th><th>Trip Type</th>
-							<th>Order Type</th><th>Route</th><th>Pax</th><th>Actions</th>
+							<th>Order Type</th><th>Route</th><th>Pax</th><th>Vehicle</th><th>Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -435,6 +465,8 @@ class FGBW_Admin {
 							$return_data_modal = json_decode( $b['return_json'] ?? '{}', true );
 							$return_pickup_zip  = $return_data_modal['pickup']['zip']  ?? '';
 							$return_dropoff_zip = $return_data_modal['dropoff']['zip'] ?? '';
+							$full_payload    = json_decode( $b['full_payload_json'] ?? '{}', true );
+							$additional_note = sanitize_textarea_field( $full_payload['additional_note'] ?? '' );
 						?>
 						<tr>
 							<td><strong>#<?php echo esc_html( $b['booking_id'] ); ?></strong></td>
@@ -478,6 +510,7 @@ class FGBW_Admin {
 										'dropoff_zip'       => $dropoff_zip,
 										'return_pickup_zip' => $return_pickup_zip,
 										'return_dropoff_zip'=> $return_dropoff_zip,
+										'additional_note'   => $additional_note,
 									] ) ); ?>'>
 									View
 								</button>
@@ -538,6 +571,7 @@ class FGBW_Admin {
 						${b.pickup_zip ? row('Pick-Up ZIP', b.pickup_zip) : ''}
 						${row('Drop-Off', b.to)}
 						${b.dropoff_zip ? row('Drop-Off ZIP', b.dropoff_zip) : ''}
+						${b.additional_note ? row('Additional Note', b.additional_note) : ''}
 					</table>`;
 
 				if (pickup.datetime) {
@@ -678,7 +712,7 @@ class FGBW_Admin {
 		 // Export rows ordered by booking_id DESC so export matches admin listing
 		 $sql  = "SELECT booking_id, created_at, name, email, phone, trip_type,
 				   order_type, passenger_count, vehicle,
-				   pickup_json, return_json
+				   pickup_json, return_json, full_payload_json
 			   FROM   {$table}
 			   WHERE  {$where_sql}
 			   ORDER  BY booking_id DESC";
@@ -714,10 +748,13 @@ class FGBW_Admin {
 			'Pickup Stop ZIPs',
 			'Return Route (Full)', 'Return DateTime', 'Return Pickup ZIP', 'Return Dropoff ZIP',
 			'Return Stop ZIPs',
+			'Additional Note',
 		] );
 
 		foreach ( $rows as $r ) {
 			// Decode the same JSON blobs that render_page() uses to build the Route column.
+			$full_payload_csv = json_decode( $r['full_payload_json'] ?? '{}', true ) ?: [];
+			$additional_note_csv = $full_payload_csv['additional_note'] ?? '';
 			$pickup_data = json_decode( $r['pickup_json'] ?? '{}', true ) ?: [];
 			$return_data = json_decode( $r['return_json'] ?? '{}', true ) ?: [];
 
@@ -805,6 +842,7 @@ class FGBW_Admin {
 				$return_pickup_zip,
 				$return_dropoff_zip,
 				$return_stops_zips_str,
+				$additional_note_csv,
 			] );
 		}
 

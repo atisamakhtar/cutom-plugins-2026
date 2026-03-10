@@ -6,7 +6,7 @@
 
     <div class="fgbw__steps">
       <div class="fgbw__step-indicator is-active" data-step-ind="1">Request Information</div>
-      <div class="fgbw__step-indicator" data-step-ind="2">Quote Request</div>
+      <div class="fgbw__step-indicator" data-step-ind="2">Personal Details</div>
     </div>
 
     <!-- STEP 1 -->
@@ -121,7 +121,7 @@
       </div>
     </section>
 
-    <!-- STEP 2: Quote Request (Confirmation) -->
+    <!-- STEP 2: Personal Details -->
     <section class="fgbw__step" data-step="2">
       <div class="fgbw__quote-container">
         <!-- Left Side: Summary -->
@@ -131,18 +131,18 @@
            <div class="fgbw__timeline-wrap">
               <div class="fgbw__timeline" data-summary-timeline></div>
            </div>
-
-           <div class="fgbw__add-info">
-             <div class="fgbw__add-info-head">
-                <h3>Additional Trip Info</h3>
-                <button type="button" class="fgbw__edit-lnk" data-prev>Edit <i class="fa fa-pencil"></i></button>
-             </div>
-             <div class="fgbw__add-info-grid" data-summary-additional></div>
-           </div>
         </div>
 
         <!-- Right Side: Contact & Luggage -->
         <div class="fgbw__quote-right">
+
+           <div class="fgbw__step2-header">
+             <h3 class="fgbw__step2-title">Personal Details</h3>
+             <button type="button" class="fgbw__back-arrow" data-prev aria-label="Back to Step 1">
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+             </button>
+           </div>
+
            <div class="fgbw__luggage-sect">
               <h3>Luggage Count</h3>
               <div class="fgbw__lr-row">
@@ -188,12 +188,20 @@
                  <input type="text" class="fgbw__input" name="first_name" placeholder="First name *" required />
                  <input type="text" class="fgbw__input" name="last_name" placeholder="Last name *" required />
               </div>
+
+              <div class="fgbw__row">
+                 <label class="fgbw__label">Additional Note</label>
+                 <textarea class="fgbw__input fgbw__textarea" name="additional_note" placeholder="Any additional notes or special requests..." rows="3"></textarea>
+              </div>
            </div>
 
            <div class="fgbw__actions fgbw__actions--col">
              <button type="button" class="fgbw__btn fgbw__btn--primary fgbw__btn--full" data-submit>
                <span class="fgbw__btn-text">Send Request</span>
                <span class="fgbw__spinner is-hidden" aria-hidden="true"></span>
+             </button>
+             <button type="button" class="fgbw__btn fgbw__btn--ghost fgbw__btn--full fgbw__btn--back" data-prev>
+               &#8592; Back to Previous Step
              </button>
              <div class="fgbw__disclaimer">
                By clicking "Send Request" you agree to receive order updates via SMS/Email.

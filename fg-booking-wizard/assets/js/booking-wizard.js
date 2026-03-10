@@ -255,8 +255,8 @@
               <label class="fgbw__label">Address</label>
               <input type="text" class="fgbw__input fgbw__address" placeholder="Enter address" />
               <div class="fgbw__hint">Powered by Google Places</div>
-              <label class="fgbw__label fgbw__zip-label">ZIP Code <span class="fgbw__req">*</span></label>
-              <input type="text" class="fgbw__input fgbw__zip" placeholder="e.g. 90210" maxlength="10" />
+              <label class="fgbw__label fgbw__zip-label">Postal Code <span class="fgbw__req">*</span></label>
+              <input type="text" class="fgbw__input fgbw__zip" placeholder="e.g. 90210 or 110001" maxlength="20" />
               <div class="fgbw__field-error fgbw__zip-error" style="display:none;"></div>
             </div>
 
@@ -294,8 +294,8 @@
 
               <div class="fgbw-flight-result"></div>
 
-              <label class="fgbw__label fgbw__zip-label" style="margin-top:12px;">ZIP Code <span class="fgbw__req">*</span></label>
-              <input type="text" class="fgbw__input fgbw__zip" placeholder="e.g. 90210" maxlength="10" />
+              <label class="fgbw__label fgbw__zip-label" style="margin-top:12px;">Postal Code <span class="fgbw__req">*</span></label>
+              <input type="text" class="fgbw__input fgbw__zip" placeholder="e.g. 90210 or 110001" maxlength="20" />
               <div class="fgbw__field-error fgbw__zip-error" style="display:none;"></div>
 
               <div class="fgbw__loader is-hidden" data-loader></div>
@@ -325,16 +325,11 @@
       this.$airport.on("input", debounce(() => this.searchAirport(), 250));
       this.$airline.on("input", debounce(() => this.searchAirline(), 250));
 
-      // Zip code binding — shared across both panes
+      // Postal code binding — shared across both panes.
+      // No format coercion: accept any value as returned by Google Places
+      // or typed manually (US, India, UK, etc. all have different formats).
       this.$root.on("input", ".fgbw__zip", (e) => {
-        const raw = $(e.currentTarget).val().trim();
-        this.state.zip = raw;
-        // Live format hint: auto-insert hyphen after 5 digits for zip+4
-        const digits = raw.replace(/\D/g, "");
-        if (digits.length > 5) {
-          $(e.currentTarget).val(digits.slice(0, 5) + "-" + digits.slice(5, 9));
-          this.state.zip = $(e.currentTarget).val().trim();
-        }
+        this.state.zip = $(e.currentTarget).val().trim();
         // Clear error on input
         this.$root.find(".fgbw__zip-error").hide().text("");
         this.$root.find(".fgbw__zip").removeClass("fgbw__input--error");
@@ -490,19 +485,55 @@
       if (!input) return;
 
       const autocomplete = new google.maps.places.Autocomplete(input, {
-        types: ["geocode"]
+        // FIX 1: Removed types: ["geocode"] restriction.
+        // "geocode" limits results to geocodable locations only, cutting out
+        // named establishments, airports, landmarks, and businesses — that is
+        // why fewer suggestions appeared vs other integrations. Omitting
+        // `types` entirely lets Google return the full set of predictions
+        // (addresses + establishments) the same way other sites do.
+        fields: ["formatted_address", "geometry", "place_id", "address_components"]
       });
 
       autocomplete.addListener("place_changed", () => {
         const place = autocomplete.getPlace();
         if (!place.geometry) return;
 
+        // Existing state update (unchanged)
         this.state.address = {
           formatted_address: place.formatted_address,
           lat: place.geometry.location.lat(),
           lng: place.geometry.location.lng(),
           place_id: place.place_id
         };
+
+        // Auto-populate ZIP from address_components.
+        // Walk the components array and find the postal_code type.
+        // Only fires on a confirmed Places selection, never on raw typing.
+        let postalCode = "";
+        const components = place.address_components || [];
+        for (let i = 0; i < components.length; i++) {
+          if (components[i].types.indexOf("postal_code") !== -1) {
+            postalCode = components[i].long_name || components[i].short_name || "";
+            break;
+          }
+        }
+
+        // FIX 2: Always write to the ZIP field on EVERY selection — even
+        // when no postal code is returned. Previously the `if (postalCode)`
+        // guard meant re-selecting a different address left the old ZIP value
+        // intact. Now we always update: set the new code when found, or clear
+        // the field when the new address has no postal code, so the displayed
+        // value always reflects the currently selected place.
+        const $zipInput = this.$root.find("[data-pane=\"address\"] .fgbw__zip");
+
+        if ($zipInput.length) {
+          $zipInput.val(postalCode); // empty string clears old value when no postal code
+          this.state.zip = postalCode;
+          // Fire native input event so existing handler runs:
+          // auto-formatter (ZIP+4 hyphen), error-clear, and emit().
+          $zipInput[0].dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
         this.emit();
       });
     }
@@ -674,7 +705,7 @@
           return: this.emptySegment(), // used only for round return
         },
         vehicle: "",
-        contact: { name: "", email: "", phone: "" },
+        contact: { name: "", email: "", phone: "", additional_note: "" },
         luggage: { carry: 0, checked: 0, oversize: 0 }
       };
 
@@ -1013,7 +1044,7 @@
           return: this.emptySegment(),
         },
         vehicle: "",
-        contact: { name: "", email: "", phone: "" },
+        contact: { name: "", email: "", phone: "", additional_note: "" },
         luggage: { carry: 0, checked: 0, oversize: 0 }
       };
 
@@ -1236,23 +1267,17 @@
         }
       }
 
-      // Validate ZIP code (US: 5 digits or ZIP+4 format: 12345-6789)
+      // ZIP/Postal code: only check presence — no format regex.
+      // Google Places returns postal codes of varying lengths depending on
+      // country (e.g. 6-digit India, 4-digit Netherlands, alphanumeric UK).
+      // Enforcing a US-only pattern would reject valid auto-filled values.
       const zip = (loc.zip || "").trim();
       const $zipInput = $block.find(".fgbw__zip").filter(":visible");
       const $zipError = $block.find(".fgbw__zip-error").filter(":visible");
-      const zipValid  = /^\d{5}(-\d{4})?$/.test(zip);
 
       if (!zip) {
         $zipInput.addClass("fgbw__input--error");
-        $zipError.text("ZIP code is required.").show();
-        if (!this._firstErrorFocused && locValid) {
-          $zipInput[0] && $zipInput[0].focus();
-          this._firstErrorFocused = true;
-        }
-        locValid = false;
-      } else if (!zipValid) {
-        $zipInput.addClass("fgbw__input--error");
-        $zipError.text("Please enter a valid US ZIP code (e.g. 90210 or 90210-1234).").show();
+        $zipError.text("Postal code is required.").show();
         if (!this._firstErrorFocused && locValid) {
           $zipInput[0] && $zipInput[0].focus();
           this._firstErrorFocused = true;
@@ -1351,33 +1376,6 @@
 
       timelineHtml += mkTimeLineItem('dropoff', trip.dropoff, true);
       this.$root.find("[data-summary-timeline]").html(timelineHtml);
-
-
-      // Additional Info Grid
-      const luggageCount = (this.state.luggage.carry || 0) + (this.state.luggage.checked || 0) + (this.state.luggage.oversize || 0);
-
-      const addGridHtml = `
-         <div class="fgbw__ainfo-col">
-            <label>PASSENGER COUNT</label>
-            <div>${totalPax}</div>
-         </div>
-         <div class="fgbw__ainfo-col">
-            <label>PASSENGER CONTACT</label>
-            <div>-</div> <!-- placeholder until filled -->
-         </div>
-         <div class="fgbw__ainfo-col">
-            <label>LUGGAGE COUNT</label>
-            <div>${luggageCount}</div>
-         </div>
-         <div class="fgbw__ainfo-col">
-            <label>TRIP NOTE</label>
-            <div>-</div>
-         </div>
-      `;
-      this.$root.find("[data-summary-additional]").html(addGridHtml);
-
-      // Bind Edit Link
-      this.$root.find(".fgbw__edit-lnk").off("click").on("click", () => this.prev());
     }
 
     locToText(loc) {
@@ -1401,7 +1399,8 @@
       const last  = this.$root.find('input[name="last_name"]').val().trim();
       const email = this.$root.find('input[name="email"]').val().trim();
       const rawPhone = this.$root.find('input[name="phone_number"]').val().trim() || '';
-      this.state.contact = { name: (first + " " + last).trim(), email, phone: rawPhone };
+      const additionalNote = this.$root.find('textarea[name="additional_note"]').val().trim() || '';
+      this.state.contact = { name: (first + " " + last).trim(), email, phone: rawPhone, additional_note: additionalNote };
 
       // console.log("Contact state:", JSON.stringify(this.state.contact));
       // console.log("Trip state:", JSON.stringify(this.state.trip));
@@ -1435,6 +1434,7 @@
         name: this.state.contact.name,
         email: this.state.contact.email,
         phone: this.state.contact.phone,
+        additional_note: this.state.contact.additional_note || "",
         luggage: this.state.luggage,
         submission_token: this.$root.find(".fgbw__submission_token").val(),
         trip: this.state.trip,

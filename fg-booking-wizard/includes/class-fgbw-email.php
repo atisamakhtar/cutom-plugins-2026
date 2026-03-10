@@ -14,6 +14,7 @@ class FGBW_Email {
         $name = sanitize_text_field($payload['name'] ?? '');
         $email = sanitize_email($payload['email'] ?? '');
         $phone = sanitize_text_field($payload['phone'] ?? '');
+        $additional_note = sanitize_textarea_field($payload['additional_note'] ?? '');
         $trip_type = sanitize_text_field($payload['trip_type'] ?? '');
         $order_type = sanitize_text_field($payload['order_type'] ?? '');
         $vehicle = sanitize_text_field($payload['vehicle'] ?? '');
@@ -72,6 +73,7 @@ class FGBW_Email {
             '{carry_on}' => $carry_on,
             '{checked}' => $checked,
             '{oversize}' => $oversize,
+            '{additional_note}' => $additional_note,
             '{pickup_zip}' => $pickup_zip,
             '{dropoff_zip}' => $dropoff_zip,
             '{return_pickup_zip}' => $return_pickup_zip,
