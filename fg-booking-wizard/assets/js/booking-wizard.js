@@ -262,26 +262,16 @@
 
             <!-- Airport Mode -->
             <div class="fgbw__loc-pane is-hidden" data-pane="airport">
-              <div class="fgbw__row">
-                <div class="fgbw__col">
-                  <label class="fgbw__label">Arrival Airport <span class="fgbw__req">*</span></label>
-                  <input type="text" class="fgbw__input fgbw__airport" placeholder="Search airport..." />
-                  <div class="fgbw__dropdown is-hidden" data-dd="airport"></div>
-                </div>
-              </div>
+              <label class="fgbw__label">Arrival Airport <span class="fgbw__req">*</span></label>
+              <input type="text" class="fgbw__input fgbw__airport" placeholder="Search airport..." />
+              <div class="fgbw__dropdown is-hidden" data-dd="airport"></div>
 
-              <div class="fgbw__row">
-                <div class="fgbw__col">
-                  <label class="fgbw__label">Airline</label>
-                  <input type="text" class="fgbw__input fgbw__airline" placeholder="Search airline..." />
-                  <div class="fgbw__dropdown is-hidden" data-dd="airline"></div>
-                </div>
+              <label class="fgbw__label" style="margin-top:12px;">Airline</label>
+              <input type="text" class="fgbw__input fgbw__airline" placeholder="Search airline..." />
+              <div class="fgbw__dropdown is-hidden" data-dd="airline"></div>
 
-                <div class="fgbw__col">
-                  <label class="fgbw__label">Flight</label>
-                  <input type="text" class="fgbw__input fgbw__flight" placeholder="e.g. AA123" />
-                </div>
-              </div>
+              <label class="fgbw__label" style="margin-top:12px;">Flight</label>
+              <input type="text" class="fgbw__input fgbw__flight" placeholder="e.g. AA123" />
 
               <label class="fgbw__chk">
                 <input type="checkbox" class="fgbw__no-flight" />
@@ -586,9 +576,62 @@
           this.$airport.val(chosen.value.airport_name + " (" + chosen.value.iata_code + ")");
           this.updateAirportUIState();
           this.emit();
+          // Auto-populate the airport-pane ZIP via reverse geocode using the
+          // airport's lat/lng stored in the DB row. Fires async after emit()
+          // so the booking state is already updated before the ZIP arrives.
+          this._autoFillAirportZip(chosen.value);
         });
       } finally {
         this.setLoading(false);
+      }
+    }
+
+    async _autoFillAirportZip(airport) {
+      // Reverse-geocode the airport lat/lng using google.maps.Geocoder — the
+      // correct browser API for this (the Geocoding REST endpoint blocks
+      // browser fetch calls with CORS). Geocoder is part of the core Maps JS
+      // bundle and is always available once the script callback fires, so no
+      // extra library is needed beyond what loadGooglePlaces() already loads.
+      const lat = parseFloat(airport.lat);
+      const lng = parseFloat(airport.lng);
+      if (!lat || !lng) return;
+
+      try {
+        await loadGooglePlaces();
+        // google.maps.Geocoder is always present after the Maps script loads.
+        // No guard needed — if it somehow isn't there, the catch handles it.
+        const geocoder = new google.maps.Geocoder();
+
+        // Wrap callback API in a Promise so we can await it cleanly.
+        const postalCode = await new Promise((resolve) => {
+          geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+            if (status !== "OK" || !results || !results.length) {
+              resolve("");
+              return;
+            }
+            // Walk all results from most-specific to least-specific
+            for (let r = 0; r < results.length; r++) {
+              const comps = results[r].address_components || [];
+              for (let i = 0; i < comps.length; i++) {
+                if (comps[i].types.indexOf("postal_code") !== -1) {
+                  resolve(comps[i].long_name || comps[i].short_name || "");
+                  return;
+                }
+              }
+            }
+            resolve(""); // no postal_code component found in any result
+          });
+        });
+
+        // Always write — clears a stale value when no postal code found
+        const $zipInput = this.$root.find("[data-pane=\"airport\"] .fgbw__zip");
+        if ($zipInput.length) {
+          $zipInput.val(postalCode);
+          this.state.zip = postalCode;
+          $zipInput[0].dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      } catch (e) {
+        // Geocoder unavailable — ZIP field stays empty for manual entry
       }
     }
 
