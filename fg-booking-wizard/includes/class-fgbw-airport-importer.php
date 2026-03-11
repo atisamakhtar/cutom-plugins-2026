@@ -19,15 +19,30 @@ class FGBW_Airport_Importer
             // Skip header
             $header = fgetcsv($handle);
 
+            // Types that are never valid passenger arrival airports.
+            // Excluding them at import time keeps the table lean (~9k rows
+            // instead of 84k) and makes all queries faster.
+            $skip_types = [ 'heliport', 'closed', 'balloonport' ];
+
             while (($data = fgetcsv($handle)) !== false) {
+
+                $airport_type = sanitize_text_field($data[2] ?? '');
+                $iata_code    = sanitize_text_field($data[13] ?? '');
+
+                // Skip non-passenger types and entries without an IATA code.
+                // An IATA code is required for flight validation and booking
+                // display — rows without one are unusable in this system.
+                if ( in_array( $airport_type, $skip_types, true ) || empty( $iata_code ) ) {
+                    continue;
+                }
 
                 $wpdb->insert($table, [
                     'airport_name' => sanitize_text_field($data[3] ?? ''),
                     'city'         => sanitize_text_field($data[10] ?? ''),
                     'country'      => sanitize_text_field($data[8] ?? ''),
-                    'iata_code'    => sanitize_text_field($data[13] ?? ''),
+                    'iata_code'    => $iata_code,
                     'icao_code'    => sanitize_text_field($data[12] ?? ''),
-                    'airport_type' => sanitize_text_field($data[2] ?? ''), // IMPORTANT
+                    'airport_type' => $airport_type,
                     'lat'          => floatval($data[4] ?? 0),
                     'lng'          => floatval($data[5] ?? 0),
                 ]);

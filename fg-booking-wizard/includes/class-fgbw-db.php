@@ -98,7 +98,8 @@ class FGBW_DB
     lng DECIMAL(10,6),
     KEY iata (iata_code),
     KEY city (city),
-    KEY type (airport_type)
+    KEY type (airport_type),
+    KEY name (airport_name)
 )";
 
         dbDelta($sql);

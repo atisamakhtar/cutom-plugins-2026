@@ -82,44 +82,70 @@ class FGBW_AJAX
 
         $q = sanitize_text_field($_POST['q'] ?? '');
 
-        if (strlen($q) < 2) {
-            wp_send_json_success(['items' => []]);
+        if ( strlen( $q ) < 2 ) {
+            wp_send_json_success( [ 'items' => [] ] );
         }
 
-        // If exactly 3 letters → prioritize IATA
-        if (preg_match('/^[A-Za-z]{3}$/', $q)) {
+        // No airport_type filter — all types (large, medium, small, local,
+        // seaplane_base, etc.) are included. Only the iata_code != '' guard
+        // remains so every result is selectable and identifiable downstream.
+
+        // Exact 2–3 letter IATA code search — highest priority, fastest path.
+        if ( preg_match( '/^[A-Za-z]{2,3}$/', $q ) ) {
 
             $results = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT * FROM $table
-             WHERE iata_code = %s
-             AND airport_type IN ('large_airport','medium_airport')
-             LIMIT 10",
-                    strtoupper($q)
+                    "SELECT * FROM {$table}
+                     WHERE iata_code = %s
+                       AND iata_code != ''
+                     ORDER BY
+                       CASE airport_type
+                         WHEN 'large_airport'  THEN 1
+                         WHEN 'medium_airport' THEN 2
+                         WHEN 'small_airport'  THEN 3
+                         ELSE 4
+                       END
+                     LIMIT 10",
+                    strtoupper( $q )
                 ),
                 ARRAY_A
             );
-        } else {
 
-            $like = '%' . $wpdb->esc_like($q) . '%';
-
-            $results = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT * FROM $table
-             WHERE
-             (airport_name LIKE %s
-              OR city LIKE %s)
-             AND airport_type IN ('large_airport','medium_airport')
-             AND iata_code != ''
-             LIMIT 10",
-                    $like,
-                    $like
-                ),
-                ARRAY_A
-            );
+            // If exact IATA match found, return immediately — no need for
+            // the broader name/city search below.
+            if ( ! empty( $results ) ) {
+                wp_send_json_success( [ 'items' => $results ] );
+            }
         }
 
-        wp_send_json_success(['items' => $results]);
+        // Full-text search across airport_name, city, AND iata_code so that
+        // partial IATA input (e.g. "JF" → JFK) and city/name queries both work.
+        $like = '%' . $wpdb->esc_like( $q ) . '%';
+
+        $results = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$table}
+                 WHERE (
+                     airport_name LIKE %s
+                  OR city         LIKE %s
+                  OR iata_code    LIKE %s
+                 )
+                   AND iata_code != ''
+                 ORDER BY
+                   CASE airport_type
+                     WHEN 'large_airport'  THEN 1
+                     WHEN 'medium_airport' THEN 2
+                     WHEN 'small_airport'  THEN 3
+                     ELSE 4
+                   END,
+                   airport_name ASC
+                 LIMIT 10",
+                $like, $like, $like
+            ),
+            ARRAY_A
+        );
+
+        wp_send_json_success( [ 'items' => $results ] );
     }
 
     // public function search_airlines(): void
