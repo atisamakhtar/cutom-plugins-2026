@@ -204,19 +204,25 @@
     <!-- BRANDED FOOTER WITH LOGO -->
     <tr>
       <td style="background-color:#111827;padding:28px 32px;text-align:center;">
-        <a href="https://optimusfleets.us" target="_blank" style="display:inline-block;text-decoration:none;">
+        <!--
+          Logo: 428x199px source. Displayed at 240x112 (natural downscale ~1.78x)
+          for sharp rendering on both standard and HiDPI/retina screens.
+          width + height HTML attrs required for Outlook layout stability.
+        -->
+        <a href="https://optimusfleets.us" target="_blank" style="display:inline-block;text-decoration:none;line-height:0;">
           <img src="{email_logo_url}"
                alt="Optimus Fleets LLC"
-               width="160"
+               width="240"
+               height="112"
                border="0"
-               style="display:block;width:160px;max-width:160px;height:auto;margin:0 auto 16px;border:0;outline:none;" />
+               style="display:block;width:240px;max-width:240px;height:112px;margin:0 auto 18px;border:0;outline:none;-ms-interpolation-mode:bicubic;image-rendering:-webkit-optimize-contrast;" />
         </a>
-        <p style="margin:0 0 6px;font-size:13px;color:#9ca3af;">
-          <a href="mailto:optimusfleetsllc@gmail.com" style="color:#d1d5db;text-decoration:none;">optimusfleetsllc@gmail.com</a>
-          &nbsp;&nbsp;|&nbsp;&nbsp;
-          <a href="tel:+18564433401" style="color:#d1d5db;text-decoration:none;">856-443-3401</a>
+        <p style="margin:0 0 8px;font-size:13px;font-weight:500;letter-spacing:0.2px;">
+          <a href="mailto:optimusfleetsllc@gmail.com" style="color:#FD8B48;text-decoration:none;">optimusfleetsllc@gmail.com</a>
+          <span style="color:#4b5563;">&nbsp;&nbsp;|&nbsp;&nbsp;</span>
+          <a href="tel:+18564433401" style="color:#FD8B48;text-decoration:none;">856-443-3401</a>
         </p>
-        <p style="margin:0;font-size:11px;color:#4b5563;">
+        <p style="margin:0;font-size:12px;color:#9ca3af;letter-spacing:0.3px;">
           &copy; Optimus Fleets LLC &middot; Admin Notification &middot; Do not reply
         </p>
       </td>
