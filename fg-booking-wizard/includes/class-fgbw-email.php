@@ -16,6 +16,12 @@ class FGBW_Email {
         $first_name = $name_parts[0] ?? '';
         $last_name  = $name_parts[1] ?? '';
 
+        // Email logo URL — from settings, falling back to the default Optimus logo
+        $email_logo_url = fgbw_get_option(
+            'email_logo_url',
+            'https://optimusfleets.us/wp-content/uploads/2026/02/optimus-logo-orange.webp'
+        );
+
         $trip_type  = sanitize_text_field($payload['trip_type']  ?? '');
         $order_type = sanitize_text_field($payload['order_type'] ?? '');
         $vehicle    = sanitize_text_field($payload['vehicle']    ?? '');
@@ -126,6 +132,7 @@ class FGBW_Email {
             '{return_stops_zips}'        => implode(', ', $ret_stop_zips) ?: $na,
             '{pickup_summary}'           => self::segment_summary($pickup),
             '{return_summary}'           => $is_round ? self::segment_summary($return) : '',
+            '{email_logo_url}'           => esc_url($email_logo_url),
         ];
     }
 

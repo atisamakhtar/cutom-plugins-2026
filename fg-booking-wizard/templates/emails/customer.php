@@ -51,10 +51,6 @@
             <td style="padding:7px 16px 7px 0;color:#6b7280;font-size:14px;white-space:nowrap;vertical-align:top;">Trip Type</td>
             <td style="padding:7px 0;font-size:14px;color:#111827;vertical-align:top;">{trip_type_label}</td>
           </tr>
-          <tr>
-            <td style="padding:7px 16px 7px 0;color:#6b7280;font-size:14px;white-space:nowrap;vertical-align:top;">Vehicle</td>
-            <td style="padding:7px 0;font-size:14px;color:#111827;vertical-align:top;">{vehicle}</td>
-          </tr>
           <tr style="background:#f9fafb;">
             <td style="padding:7px 16px 7px 0;color:#6b7280;font-size:14px;white-space:nowrap;vertical-align:top;">Number of Passengers</td>
             <td style="padding:7px 0;font-size:14px;color:#111827;vertical-align:top;">{passenger_count}</td>
@@ -201,17 +197,17 @@
 
     <!-- SIGNATURE / FOOTER -->
     <tr>
-      <td style="padding:24px 32px 32px;">
+      <td style="padding:24px 32px 28px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e5e7eb;padding-top:20px;margin-top:4px;">
           <tr>
             <td>
               <p style="margin:0;font-size:14px;font-weight:700;color:#111827;">Best Wishes,</p>
               <p style="margin:4px 0 0;font-size:14px;color:#374151;">Team of <strong>Optimus Fleets LLC</strong></p>
               <p style="margin:10px 0 3px;font-size:13px;color:#6b7280;">
-                ✉ <a href="mailto:optimusfleetsllc@gmail.com" style="color:#f97316;text-decoration:none;">optimusfleetsllc@gmail.com</a>
+                &#x2709; <a href="mailto:optimusfleetsllc@gmail.com" style="color:#f97316;text-decoration:none;">optimusfleetsllc@gmail.com</a>
               </p>
               <p style="margin:0;font-size:13px;color:#6b7280;">
-                📞 <a href="tel:+18564433401" style="color:#f97316;text-decoration:none;">856-443-3401</a>
+                &#x260E; <a href="tel:+18564433401" style="color:#f97316;text-decoration:none;">856-443-3401</a>
               </p>
             </td>
           </tr>
@@ -219,11 +215,27 @@
       </td>
     </tr>
 
-    <!-- BOTTOM BAR -->
+    <!-- BRANDED FOOTER WITH LOGO -->
     <tr>
-      <td style="background-color:#111827;padding:14px 32px;text-align:center;">
-        <p style="margin:0;font-size:12px;color:#6b7280;">
-          © Optimus Fleets LLC · All rights reserved
+      <td style="background-color:#111827;padding:28px 32px;text-align:center;">
+        <!--[if !mso]><!-->
+        <a href="https://optimusfleets.us" target="_blank" style="display:inline-block;text-decoration:none;">
+          <img src="{email_logo_url}"
+               alt="Optimus Fleets LLC"
+               width="160"
+               border="0"
+               style="display:block;width:160px;max-width:160px;height:auto;margin:0 auto 14px;border:0;outline:none;" />
+        </a>
+        <!--<![endif]-->
+        <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">Optimus Fleets LLC</p>
+        <p style="margin:0 0 10px;font-size:12px;color:#9ca3af;">Premium Transportation Services</p>
+        <p style="margin:0;font-size:11px;color:#6b7280;">
+          <a href="mailto:optimusfleetsllc@gmail.com" style="color:#6b7280;text-decoration:none;">optimusfleetsllc@gmail.com</a>
+          &nbsp;&bull;&nbsp;
+          <a href="tel:+18564433401" style="color:#6b7280;text-decoration:none;">856-443-3401</a>
+        </p>
+        <p style="margin:12px 0 0;font-size:11px;color:#4b5563;">
+          &copy; Optimus Fleets LLC &middot; All rights reserved
         </p>
       </td>
     </tr>

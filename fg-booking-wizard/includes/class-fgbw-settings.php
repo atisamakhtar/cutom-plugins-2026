@@ -29,6 +29,7 @@ class FGBW_Settings {
         add_settings_field('google_places_key', 'Google Places API Key (frontend)', [$this, 'field_google'], 'fgbw-settings', 'fgbw_api');
         add_settings_field('aviationstack_key', 'Aviationstack API Key (server-only)', [$this, 'field_aviation'], 'fgbw-settings', 'fgbw_api');
         add_settings_field('admin_email', 'Admin Notification Email', [$this, 'field_admin_email'], 'fgbw-settings', 'fgbw_api');
+        add_settings_field('email_logo_url', 'Email Logo URL', [$this, 'field_email_logo'], 'fgbw-settings', 'fgbw_api');
 
         add_settings_section('fgbw_emails', 'Email Templates', '__return_false', 'fgbw-settings');
 
@@ -46,6 +47,7 @@ class FGBW_Settings {
         $out['google_places_key'] = sanitize_text_field($input['google_places_key'] ?? '');
         $out['aviationstack_key'] = sanitize_text_field($input['aviationstack_key'] ?? '');
         $out['admin_email'] = sanitize_email($input['admin_email'] ?? get_option('admin_email'));
+        $out['email_logo_url'] = esc_url_raw($input['email_logo_url'] ?? '');
 
         // Email templates
         $out['email_customer_subject'] = sanitize_text_field($input['email_customer_subject'] ?? 'Your booking #{booking_id} is received');
@@ -89,6 +91,16 @@ class FGBW_Settings {
     public function field_admin_email(): void {
         $v = esc_attr(fgbw_get_option('admin_email', get_option('admin_email')));
         echo "<input type='email' class='regular-text' name='fgbw_settings[admin_email]' value='{$v}' />";
+    }
+
+    public function field_email_logo(): void {
+        $v = esc_attr(fgbw_get_option('email_logo_url', ''));
+        $default = 'https://optimusfleets.us/wp-content/uploads/2026/02/optimus-logo-orange.webp';
+        echo "<input type='url' class='large-text' name='fgbw_settings[email_logo_url]' value='{$v}' placeholder='{$default}' />";
+        echo "<p class='description'>Full URL to your logo image displayed in email footers. Leave blank to use the default Optimus Fleets logo. Recommended: PNG or WebP, transparent background, max 200px wide.</p>";
+        if ($v) {
+            echo "<p><img src='" . esc_url($v) . "' style='max-height:50px;margin-top:6px;border:1px solid #ddd;border-radius:4px;padding:4px;background:#fff;' alt='Email logo preview' /></p>";
+        }
     }
 
     public function field_customer_subject(): void {

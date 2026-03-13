@@ -750,14 +750,19 @@
   padding: 24px;
 }
 
-/* ── Phone field: dial-code selector + number input ── */
+/* ── Phone field: custom country-code picker + number input ── */
 .fgbw__phone-wrap {
-  display: flex;
-  align-items: stretch;
+  display: flex !important;
+  flex-direction: row !important;  /* themes must not stack this column */
+  align-items: stretch !important;
+  flex-wrap: nowrap !important;    /* never wrap — picker and input stay side by side */
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   background: #fff;
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .fgbw__phone-wrap:focus-within {
@@ -765,48 +770,148 @@
   box-shadow: 0 0 0 3px rgba(17,24,39,0.08);
 }
 
-.fgbw__dial-code {
+/* ── Country-code picker container ── */
+.fgbw__cc-picker {
+  position: relative;
   flex: 0 0 auto;
-  border: none;
   border-right: 1px solid #d1d5db;
-  border-radius: 0;
+}
+
+/* ── Trigger button ── */
+.fgbw__cc-trigger {
+  all: unset;
+  display: flex !important;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px 0 12px;
+  height: 100%;
+  min-height: 44px;
   background: #f9fafb;
-  padding: 0 10px;
+  cursor: pointer;
   font-size: 14px;
   color: #374151;
-  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 7px 0 0 7px;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.fgbw__cc-trigger:hover { background: #f3f4f6; }
+.fgbw__cc-trigger:focus-visible {
+  outline: 2px solid #111827;
+  outline-offset: -2px;
+  border-radius: 7px 0 0 7px;
+}
+.fgbw__cc-flag  { font-size: 16px; line-height: 1; }
+.fgbw__cc-label { font-size: 13px; font-weight: 600; color: #374151; }
+.fgbw__cc-arrow { font-size: 10px; color: #9ca3af; margin-left: 2px; }
+
+/* ── Dropdown panel ── */
+.fgbw__cc-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 99999;
+  width: 260px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  overflow: hidden;
+}
+.fgbw__cc-panel[hidden] { display: none; }
+
+/* ── Search input inside dropdown ── */
+.fgbw__cc-search-wrap {
+  padding: 10px 10px 6px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.fgbw__cc-search {
+  all: unset;
+  display: block !important;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid #d1d5db !important;
+  border-radius: 6px !important;
+  background: #f9fafb !important;
+  color: #111827 !important;
   outline: none;
-  min-width: 100px;
-  appearance: auto;
+}
+.fgbw__cc-search:focus {
+  border-color: #111827 !important;
+  background: #fff !important;
 }
 
-.fgbw__dial-code:focus {
+/* ── List of countries ── */
+.fgbw__cc-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.fgbw__cc-list::-webkit-scrollbar { width: 6px; }
+.fgbw__cc-list::-webkit-scrollbar-track { background: #f9fafb; }
+.fgbw__cc-list::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+
+.fgbw__cc-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fgbw__cc-list li:hover,
+.fgbw__cc-list li[aria-selected="true"] {
   background: #f3f4f6;
+  color: #111827;
+}
+.fgbw__cc-list li[aria-selected="true"] { font-weight: 600; }
+.fgbw__cc-list li .fgbw__cc-li-flag   { font-size: 15px; flex-shrink: 0; }
+.fgbw__cc-list li .fgbw__cc-li-name   { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.fgbw__cc-list li .fgbw__cc-li-code   { color: #9ca3af; font-size: 12px; flex-shrink: 0; }
+.fgbw__cc-list .fgbw__cc-no-results   {
+  padding: 12px 14px;
+  color: #9ca3af;
+  font-size: 13px;
+  font-style: italic;
 }
 
+/* ── Phone number text input ── */
 .fgbw__phone-wrap .fgbw__phone {
-  flex: 1 1 auto;
+  flex: 1 1 auto !important;
+  display: block !important;
+  width: auto !important;        /* override .fgbw__input { width:100% } so flex controls width */
+  min-width: 120px !important;   /* never collapse under theme overrides */
   border: none !important;
-  border-radius: 0 !important;
+  border-radius: 0 8px 8px 0 !important;
   box-shadow: none !important;
-  min-width: 0;
+  background: #fff !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
-
 .fgbw__phone-wrap .fgbw__phone:focus {
   box-shadow: none !important;
   border: none !important;
+  outline: none !important;
 }
 
-/* Show red border on the wrapper when the inner input has a validation error */
+/* Show red border on wrapper on validation error */
 .fgbw__phone-wrap:has(.fgbw__input--error) {
   border-color: #ef4444;
   box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
 }
 
-/* Mobile: stack selector above number input */
+/* Mobile: stack vertically */
 @media (max-width: 480px) {
   .fgbw__phone-wrap {
-    flex-direction: column;
+    flex-direction: column !important;
     overflow: visible;
     border: none;
     gap: 6px;
@@ -817,13 +922,17 @@
     border: none;
     box-shadow: none;
   }
-  .fgbw__dial-code {
-    width: 100%;
+  .fgbw__cc-picker {
+    border-right: none;
     border: 1px solid #d1d5db;
-    border-right: 1px solid #d1d5db;
     border-radius: 8px;
-    padding: 10px 12px;
+    overflow: visible;
   }
+  .fgbw__cc-trigger {
+    width: 100%;
+    border-radius: 7px;
+  }
+  .fgbw__cc-panel { width: 100%; left: 0; }
   .fgbw__phone-wrap .fgbw__phone {
     border: 1px solid #d1d5db !important;
     border-radius: 8px !important;
@@ -840,6 +949,7 @@
     border-color: #ef4444 !important;
   }
 }
+
 
 .fgbw__luggage-sect h3,
 .fgbw__contact-sect h3 {
