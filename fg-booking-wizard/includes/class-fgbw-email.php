@@ -38,8 +38,8 @@ class FGBW_Email {
         $pickup_datetime  = sanitize_text_field($pickup['datetime'] ?? '');
         $pickup_date      = $pickup_datetime ? date('F j, Y', strtotime($pickup_datetime)) : '';
         $pickup_time      = $pickup_datetime ? date('g:i A',  strtotime($pickup_datetime)) : '';
-        $pickup_loc       = self::loc_label($pickup['pickup']  ?? null);
-        $dropoff_loc      = self::loc_label($pickup['dropoff'] ?? null);
+        $pickup_loc       = self::loc_label_with_zip($pickup['pickup']  ?? null);
+        $dropoff_loc      = self::loc_label_with_zip($pickup['dropoff'] ?? null);
         $passenger_count  = (string)((int)($pickup['passenger_count'] ?? 1));
 
         $pu_apt  = self::flight_info($pickup['pickup']  ?? null);
@@ -64,8 +64,8 @@ class FGBW_Email {
         $ret_dt   = sanitize_text_field($return['datetime'] ?? '');
         $ret_date = ($is_round && $ret_dt) ? date('F j, Y', strtotime($ret_dt)) : '';
         $ret_time = ($is_round && $ret_dt) ? date('g:i A',  strtotime($ret_dt)) : '';
-        $ret_pu   = $is_round ? self::loc_label($return['pickup']  ?? null) : '';
-        $ret_do   = $is_round ? self::loc_label($return['dropoff'] ?? null) : '';
+        $ret_pu   = $is_round ? self::loc_label_with_zip($return['pickup']  ?? null) : '';
+        $ret_do   = $is_round ? self::loc_label_with_zip($return['dropoff'] ?? null) : '';
         $ret_pu_zip = $is_round ? self::loc_zip($return['pickup']  ?? null) : '';
         $ret_do_zip = $is_round ? self::loc_zip($return['dropoff'] ?? null) : '';
 
@@ -211,6 +211,16 @@ class FGBW_Email {
     private static function loc_zip(?array $loc): string {
         if (!is_array($loc)) return '';
         return sanitize_text_field($loc['zip'] ?? '');
+    }
+
+    /** Location label with ZIP appended if present (for email display) */
+    private static function loc_label_with_zip(?array $loc): string {
+        $label = self::loc_label($loc);
+        $zip   = self::loc_zip($loc);
+        if ($label && $zip) {
+            return $label . ' (ZIP: ' . $zip . ')';
+        }
+        return $label;
     }
 
     private static function segment_summary(array $seg): string {
