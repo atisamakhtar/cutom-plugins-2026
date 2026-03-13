@@ -488,43 +488,108 @@
         const place = autocomplete.getPlace();
         if (!place.geometry) return;
 
-        // Existing state update (unchanged)
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+
+        // Update state immediately — ZIP will follow in a moment
         this.state.address = {
           formatted_address: place.formatted_address,
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
+          lat,
+          lng,
           place_id: place.place_id
         };
 
-        // Auto-populate ZIP from address_components.
-        // Walk the components array and find the postal_code type.
-        // Only fires on a confirmed Places selection, never on raw typing.
-        let postalCode = "";
-        const components = place.address_components || [];
-        for (let i = 0; i < components.length; i++) {
-          if (components[i].types.indexOf("postal_code") !== -1) {
-            postalCode = components[i].long_name || components[i].short_name || "";
-            break;
-          }
-        }
-
-        // FIX 2: Always write to the ZIP field on EVERY selection — even
-        // when no postal code is returned. Previously the `if (postalCode)`
-        // guard meant re-selecting a different address left the old ZIP value
-        // intact. Now we always update: set the new code when found, or clear
-        // the field when the new address has no postal code, so the displayed
-        // value always reflects the currently selected place.
         const $zipInput = this.$root.find("[data-pane=\"address\"] .fgbw__zip");
 
-        if ($zipInput.length) {
-          $zipInput.val(postalCode); // empty string clears old value when no postal code
-          this.state.zip = postalCode;
-          // Fire native input event so existing handler runs:
-          // auto-formatter (ZIP+4 hyphen), error-clear, and emit().
-          $zipInput[0].dispatchEvent(new Event("input", { bubbles: true }));
+        // Helper: extract postal_code (+ optional suffix) from an
+        // address_components array. Returns "" when not found.
+        const extractPostalCode = (comps) => {
+          let base = "", suffix = "";
+          for (let i = 0; i < comps.length; i++) {
+            const types = comps[i].types;
+            if (types.indexOf("postal_code") !== -1 && types.indexOf("postal_code_suffix") === -1) {
+              base = comps[i].long_name || comps[i].short_name || "";
+            }
+            if (types.indexOf("postal_code_suffix") !== -1) {
+              suffix = comps[i].long_name || comps[i].short_name || "";
+            }
+          }
+          return suffix ? base + "-" + suffix : base;
+        };
+
+        // Step 1: Check address_components returned directly by Places.
+        // Fast path — no extra API call needed when this succeeds.
+        const directCode = extractPostalCode(place.address_components || []);
+        if (directCode) {
+          if ($zipInput.length) {
+            $zipInput.val(directCode);
+            this.state.zip = directCode;
+            $zipInput[0].dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          this.emit();
+          return;
         }
 
+        // Step 2: Places didn't return a postal_code (common for neighbourhood
+        // or landmark picks, and for locations in countries with sparse Places
+        // postal data). Clear stale value and emit the address state now, then
+        // fire two parallel Geocoder requests using the place lat/lng:
+        //   A) result_type=postal_code — asks Google specifically for the
+        //      postal-code-level result at this location; highest signal.
+        //   B) Generic reverse-geocode — returns all result types ordered by
+        //      specificity; postal_code can appear in any result's components.
+        // Whichever resolves first with a non-empty value wins. Running both
+        // in parallel maximises the chance of finding a code quickly.
+        if ($zipInput.length) {
+          $zipInput.val("");
+          this.state.zip = "";
+          $zipInput[0].dispatchEvent(new Event("input", { bubbles: true }));
+        }
         this.emit();
+
+        (async () => {
+          try {
+            const geocoder = new google.maps.Geocoder();
+            const latlng  = { lat, lng };
+
+            // Geocoder call A: targeted postal_code result type
+            const callA = new Promise((resolve) => {
+              geocoder.geocode({ location: latlng, result_type: "postal_code" }, (results, status) => {
+                if (status !== "OK" || !results || !results.length) { resolve(""); return; }
+                for (let r = 0; r < results.length; r++) {
+                  const code = extractPostalCode(results[r].address_components || []);
+                  if (code) { resolve(code); return; }
+                }
+                resolve("");
+              });
+            });
+
+            // Geocoder call B: generic reverse-geocode, scan all results
+            const callB = new Promise((resolve) => {
+              geocoder.geocode({ location: latlng }, (results, status) => {
+                if (status !== "OK" || !results || !results.length) { resolve(""); return; }
+                for (let r = 0; r < results.length; r++) {
+                  const code = extractPostalCode(results[r].address_components || []);
+                  if (code) { resolve(code); return; }
+                }
+                resolve("");
+              });
+            });
+
+            // Wait for both; use the first non-empty answer
+            const [codeA, codeB] = await Promise.all([callA, callB]);
+            const best = codeA || codeB;
+
+            if (best && $zipInput.length) {
+              $zipInput.val(best);
+              this.state.zip = best;
+              $zipInput[0].dispatchEvent(new Event("input", { bubbles: true }));
+              this.emit();
+            }
+          } catch (e) {
+            // Geocoder unavailable — field stays cleared for manual entry
+          }
+        })();
       });
     }
 
@@ -1049,8 +1114,12 @@
 
     bindNavButtons() {
       // Clear individual field errors as user starts correcting them
-      this.$root.on("input change", 'input[name="first_name"], input[name="last_name"], input[name="email"], input[name="phone_number"]', (e) => {
-        const $inp = $(e.currentTarget);
+      this.$root.on("input change", 'input[name="first_name"], input[name="last_name"], input[name="email"], input[name="phone_number"], .fgbw__dial-code', (e) => {
+        // For the dial-code select, clear the error on the sibling phone input
+        const $target = $(e.currentTarget);
+        const $inp = $target.hasClass('fgbw__dial-code')
+          ? $target.closest('.fgbw__phone-wrap').find('input[name="phone_number"]')
+          : $target;
         $inp.removeClass("fgbw__input--error");
         $inp.next(".fgbw__field-error").text("").hide();
       });
@@ -1252,7 +1321,8 @@
 
         const name  = this.state.contact.name  || "";
         const email = this.state.contact.email || "";
-        const phone = this.state.contact.phone || "";
+        // Validate the raw number input (not the combined value which includes dial code)
+        const phoneRaw = $phone.val().trim();
         const parts = name.split(" ");
         const first = parts[0] || "";
         const last  = parts.slice(1).join(" ") || "";
@@ -1269,7 +1339,7 @@
           this.fieldError($email, "Please enter a valid email address.");
           valid = false;
         }
-        if (!phone) {
+        if (!phoneRaw) {
           this.fieldError($phone, "Phone number is required.");
           valid = false;
         }
@@ -1441,7 +1511,11 @@
       const first = this.$root.find('input[name="first_name"]').val().trim();
       const last  = this.$root.find('input[name="last_name"]').val().trim();
       const email = this.$root.find('input[name="email"]').val().trim();
-      const rawPhone = this.$root.find('input[name="phone_number"]').val().trim() || '';
+      const phoneNumber = this.$root.find('input[name="phone_number"]').val().trim() || '';
+      const dialCode    = this.$root.find('.fgbw__dial-code').val() || '';
+      // Strip the -CA suffix used to distinguish Canada +1 from US +1 in display
+      const cleanCode   = dialCode.replace(/-[A-Z]+$/, '');
+      const rawPhone    = phoneNumber ? (cleanCode + ' ' + phoneNumber) : '';
       const additionalNote = this.$root.find('textarea[name="additional_note"]').val().trim() || '';
       this.state.contact = { name: (first + " " + last).trim(), email, phone: rawPhone, additional_note: additionalNote };
 

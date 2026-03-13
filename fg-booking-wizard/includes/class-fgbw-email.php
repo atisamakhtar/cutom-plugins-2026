@@ -1,204 +1,298 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-/**
- * Hook into wp_mail_failed to catch ALL mail errors regardless of SMTP plugin.
- * Logs to WordPress debug log when WP_DEBUG + WP_DEBUG_LOG are enabled.
- */
 add_action('wp_mail_failed', function(WP_Error $error) {
     error_log('[FGBW Email] wp_mail_failed: ' . implode(', ', $error->get_error_messages()));
 });
 
 class FGBW_Email {
+
     private static function placeholders(int $booking_id, array $payload): array {
-        $name = sanitize_text_field($payload['name'] ?? '');
-        $email = sanitize_email($payload['email'] ?? '');
+        $name  = sanitize_text_field($payload['name']  ?? '');
+        $email = sanitize_email(     $payload['email'] ?? '');
         $phone = sanitize_text_field($payload['phone'] ?? '');
         $additional_note = sanitize_textarea_field($payload['additional_note'] ?? '');
-        $trip_type = sanitize_text_field($payload['trip_type'] ?? '');
-        $order_type = sanitize_text_field($payload['order_type'] ?? '');
-        $vehicle = sanitize_text_field($payload['vehicle'] ?? '');
-
-        // Extract first and last name from full name
         $name_parts = explode(' ', trim($name), 2);
         $first_name = $name_parts[0] ?? '';
-        $last_name = $name_parts[1] ?? '';
+        $last_name  = $name_parts[1] ?? '';
 
-        // Extract luggage counts
-        $luggage = $payload['luggage'] ?? [];
-        $carry_on = (string) ((int)($luggage['carry_on'] ?? $luggage['carry'] ?? 0));
-        $checked = (string) ((int)($luggage['checked'] ?? 0));
-        $oversize = (string) ((int)($luggage['oversize'] ?? 0));
+        $trip_type  = sanitize_text_field($payload['trip_type']  ?? '');
+        $order_type = sanitize_text_field($payload['order_type'] ?? '');
+        $vehicle    = sanitize_text_field($payload['vehicle']    ?? '');
 
-        $trip = $payload['trip'] ?? [];
-        $pickup = $trip['pickup'] ?? [];
-        $return = $trip['return'] ?? [];
+        $luggage  = $payload['luggage'] ?? [];
+        $carry_on = (string)((int)($luggage['carry_on'] ?? $luggage['carry'] ?? 0));
+        $checked  = (string)((int)($luggage['checked']  ?? 0));
+        $oversize = (string)((int)($luggage['oversize'] ?? 0));
 
-        $pickup_summary = self::segment_summary($pickup);
-        $return_summary = ($trip_type === 'round_trip') ? self::segment_summary($return) : '';
+        $trip   = $payload['trip']   ?? [];
+        $pickup = $trip['pickup']    ?? [];
+        $return = $trip['return']    ?? [];
 
-        $passenger_count = (string) ((int)($pickup['passenger_count'] ?? 1));
+        $pickup_datetime  = sanitize_text_field($pickup['datetime'] ?? '');
+        $pickup_date      = $pickup_datetime ? date('F j, Y', strtotime($pickup_datetime)) : '';
+        $pickup_time      = $pickup_datetime ? date('g:i A',  strtotime($pickup_datetime)) : '';
+        $pickup_loc       = self::loc_label($pickup['pickup']  ?? null);
+        $dropoff_loc      = self::loc_label($pickup['dropoff'] ?? null);
+        $passenger_count  = (string)((int)($pickup['passenger_count'] ?? 1));
 
-        // Extract ZIP codes from pickup and return segments
-        $pickup_zip   = self::loc_zip($pickup['pickup']  ?? null);
-        $dropoff_zip  = self::loc_zip($pickup['dropoff'] ?? null);
-        $return_pickup_zip  = self::loc_zip($return['pickup']  ?? null);
-        $return_dropoff_zip = self::loc_zip($return['dropoff'] ?? null);
+        $pu_apt  = self::flight_info($pickup['pickup']  ?? null);
+        $do_apt  = self::flight_info($pickup['dropoff'] ?? null);
+        $airline_name  = $pu_apt['airline']      ?: $do_apt['airline'];
+        $airline_iata  = $pu_apt['airline_iata'] ?: $do_apt['airline_iata'];
+        $flight_number = $pu_apt['flight']       ?: $do_apt['flight'];
+        $no_flight     = $pu_apt['no_flight']    || $do_apt['no_flight'];
+        $airline_label = $airline_name ? "{$airline_name} ({$airline_iata})" : ($airline_iata ?: '—');
+        $flight_label  = $no_flight ? 'Not provided' : ($flight_number ?: '—');
 
-        // Build stop zip summaries (e.g. "Stop 1: 90210, Stop 2: 10001")
-        $pickup_stops_zips = [];
+        $pickup_zip  = self::loc_zip($pickup['pickup']  ?? null);
+        $dropoff_zip = self::loc_zip($pickup['dropoff'] ?? null);
+        $pickup_stops_html  = self::stops_html($pickup['stops']  ?? []);
+        $pickup_stops_plain = self::stops_plain($pickup['stops'] ?? []);
+        $pu_stop_zips = [];
         foreach (($pickup['stops'] ?? []) as $i => $s) {
-            $z = self::loc_zip($s);
-            if ($z) $pickup_stops_zips[] = 'Stop ' . ($i + 1) . ': ' . $z;
+            $z = self::loc_zip($s); if ($z) $pu_stop_zips[] = 'Stop '.($i+1).': '.$z;
         }
-        $return_stops_zips = [];
-        foreach (($return['stops'] ?? []) as $i => $s) {
-            $z = self::loc_zip($s);
-            if ($z) $return_stops_zips[] = 'Stop ' . ($i + 1) . ': ' . $z;
+
+        $is_round = ($trip_type === 'round_trip');
+        $ret_dt   = sanitize_text_field($return['datetime'] ?? '');
+        $ret_date = ($is_round && $ret_dt) ? date('F j, Y', strtotime($ret_dt)) : '';
+        $ret_time = ($is_round && $ret_dt) ? date('g:i A',  strtotime($ret_dt)) : '';
+        $ret_pu   = $is_round ? self::loc_label($return['pickup']  ?? null) : '';
+        $ret_do   = $is_round ? self::loc_label($return['dropoff'] ?? null) : '';
+        $ret_pu_zip = $is_round ? self::loc_zip($return['pickup']  ?? null) : '';
+        $ret_do_zip = $is_round ? self::loc_zip($return['dropoff'] ?? null) : '';
+
+        $rpa = $is_round ? self::flight_info($return['pickup']  ?? null) : [];
+        $rda = $is_round ? self::flight_info($return['dropoff'] ?? null) : [];
+        $ret_airline_name  = ($rpa['airline']      ?? '') ?: ($rda['airline']      ?? '');
+        $ret_airline_iata  = ($rpa['airline_iata'] ?? '') ?: ($rda['airline_iata'] ?? '');
+        $ret_flight_number = ($rpa['flight']       ?? '') ?: ($rda['flight']       ?? '');
+        $ret_no_flight     = ($rpa['no_flight']    ?? false) || ($rda['no_flight'] ?? false);
+        $ret_airline_label = $ret_airline_name ? "{$ret_airline_name} ({$ret_airline_iata})" : ($ret_airline_iata ?: '—');
+        $ret_flight_label  = $ret_no_flight ? 'Not provided' : ($ret_flight_number ?: '—');
+
+        $ret_stops_html  = $is_round ? self::stops_html($return['stops']  ?? []) : '';
+        $ret_stops_plain = $is_round ? self::stops_plain($return['stops'] ?? []) : '';
+        $ret_stop_zips = [];
+        if ($is_round) {
+            foreach (($return['stops'] ?? []) as $i => $s) {
+                $z = self::loc_zip($s); if ($z) $ret_stop_zips[] = 'Stop '.($i+1).': '.$z;
+            }
         }
+
+        $na = $is_round ? '—' : 'N/A';
 
         return [
-            '{booking_id}' => (string)$booking_id,
-            '{name}' => $name,
-            '{first_name}' => $first_name,
-            '{last_name}' => $last_name,
-            '{email}' => $email,
-            '{phone}' => $phone,
-            '{trip_type}' => $trip_type,
-            '{order_type}' => $order_type,
-            '{pickup_summary}' => $pickup_summary,
-            '{return_summary}' => $return_summary,
-            '{vehicle}' => $vehicle,
-            '{passenger_count}' => $passenger_count,
-            '{carry_on}' => $carry_on,
-            '{checked}' => $checked,
-            '{oversize}' => $oversize,
-            '{additional_note}' => $additional_note,
-            '{pickup_zip}' => $pickup_zip,
-            '{dropoff_zip}' => $dropoff_zip,
-            '{return_pickup_zip}' => $return_pickup_zip,
-            '{return_dropoff_zip}' => $return_dropoff_zip,
-            '{pickup_stops_zips}' => implode(', ', $pickup_stops_zips),
-            '{return_stops_zips}' => implode(', ', $return_stops_zips),
+            '{booking_id}'               => (string)$booking_id,
+            '{trip_type}'                => $trip_type,
+            '{trip_type_label}'          => self::label_trip_type($trip_type),
+            '{order_type}'               => $order_type,
+            '{order_type_label}'         => self::label_order_type($order_type),
+            '{vehicle}'                  => $vehicle ?: '—',
+            '{name}'                     => $name,
+            '{first_name}'               => $first_name,
+            '{last_name}'                => $last_name,
+            '{email}'                    => $email,
+            '{phone}'                    => $phone,
+            '{additional_note}'          => nl2br(esc_html($additional_note)) ?: '—',
+            '{pickup_date}'              => $pickup_date  ?: '—',
+            '{pickup_time}'              => $pickup_time  ?: '—',
+            '{pickup_datetime}'          => $pickup_datetime ?: '—',
+            '{pickup_location}'          => esc_html($pickup_loc)  ?: '—',
+            '{dropoff_location}'         => esc_html($dropoff_loc) ?: '—',
+            '{pickup_zip}'               => $pickup_zip   ?: '—',
+            '{dropoff_zip}'              => $dropoff_zip  ?: '—',
+            '{passenger_count}'          => $passenger_count,
+            '{airline}'                  => esc_html($airline_label),
+            '{flight_number}'            => esc_html($flight_label),
+            '{pickup_stops_html}'        => $pickup_stops_html,
+            '{pickup_stops_plain}'       => esc_html($pickup_stops_plain),
+            '{pickup_stops_zips}'        => implode(', ', $pu_stop_zips) ?: '—',
+            '{carry_on}'                 => $carry_on,
+            '{checked}'                  => $checked,
+            '{oversize}'                 => $oversize,
+            '{is_round_trip}'            => $is_round ? 'Yes' : 'No',
+            '{return_date}'              => $ret_date ?: $na,
+            '{return_time}'              => $ret_time ?: $na,
+            '{return_pickup_location}'   => esc_html($ret_pu)  ?: $na,
+            '{return_dropoff_location}'  => esc_html($ret_do)  ?: $na,
+            '{return_pickup_zip}'        => $ret_pu_zip ?: $na,
+            '{return_dropoff_zip}'       => $ret_do_zip ?: $na,
+            '{return_airline}'           => esc_html($ret_airline_label),
+            '{return_flight_number}'     => esc_html($ret_flight_label),
+            '{return_stops_html}'        => $ret_stops_html,
+            '{return_stops_plain}'       => esc_html($ret_stops_plain),
+            '{return_stops_zips}'        => implode(', ', $ret_stop_zips) ?: $na,
+            '{pickup_summary}'           => self::segment_summary($pickup),
+            '{return_summary}'           => $is_round ? self::segment_summary($return) : '',
         ];
     }
 
-    private static function segment_summary(array $seg): string {
-        $dt = sanitize_text_field($seg['datetime'] ?? '');
-        $pickup = self::loc_summary($seg['pickup'] ?? null);
-        $dropoff = self::loc_summary($seg['dropoff'] ?? null);
-        $stops = $seg['stops'] ?? [];
-        $stops_txt = '';
-        if (is_array($stops) && !empty($stops)) {
-            $parts = [];
-            foreach ($stops as $s) $parts[] = self::loc_summary($s);
-            $stops_txt = 'Stops: ' . implode(' → ', array_filter($parts)) . "\n";
-        }
-
-        return trim("Date/Time: {$dt}\nPick-Up: {$pickup}\n{$stops_txt}Drop-Off: {$dropoff}");
+    private static function label_trip_type(string $t): string {
+        return match($t) {
+            'one_way'    => 'One Way',
+            'round_trip' => 'Round Trip',
+            default      => ucwords(str_replace('_', ' ', $t)) ?: '—',
+        };
     }
 
-    private static function loc_summary($loc): string {
+    private static function label_order_type(string $t): string {
+        return match($t) {
+            'airport_pickup'  => 'Airport Pick-Up',
+            'airport_dropoff' => 'Airport Drop-Off',
+            'point_to_point'  => 'Point to Point',
+            'hourly'          => 'Hourly',
+            default           => ucwords(str_replace('_', ' ', $t)) ?: '—',
+        };
+    }
+
+    private static function stops_html(array $stops): string {
+        if (empty($stops)) return '';
+        $html = '';
+        foreach ($stops as $i => $stop) {
+            $n   = $i + 1;
+            $lbl = esc_html(self::loc_label($stop));
+            $zip = self::loc_zip($stop);
+            $zip_str = $zip ? " <span style='color:#6b7280;font-size:13px;'>(ZIP: ".esc_html($zip).")</span>" : '';
+            $html .= "<tr>
+              <td style='padding:7px 16px 7px 0;color:#6b7280;font-size:14px;white-space:nowrap;vertical-align:top;width:100px;'>Stop {$n}</td>
+              <td style='padding:7px 0;font-size:14px;color:#111827;vertical-align:top;'>{$lbl}{$zip_str}</td>
+            </tr>";
+        }
+        return $html;
+    }
+
+    private static function stops_plain(array $stops): string {
+        if (empty($stops)) return '';
+        $lines = [];
+        foreach ($stops as $i => $stop) {
+            $lbl = self::loc_label($stop);
+            $zip = self::loc_zip($stop);
+            $lines[] = "Stop ".($i+1).": {$lbl}".($zip ? " (ZIP: {$zip})" : '');
+        }
+        return implode("\n", $lines);
+    }
+
+    private static function flight_info(?array $loc): array {
+        $empty = ['airline'=>'','airline_iata'=>'','flight'=>'','no_flight'=>false];
+        if (!is_array($loc) || ($loc['mode'] ?? '') !== 'airport') return $empty;
+        $a = $loc['airline'] ?? null;
+        return [
+            'airline'      => is_array($a) ? sanitize_text_field($a['airline_name'] ?? '') : '',
+            'airline_iata' => is_array($a) ? sanitize_text_field($a['iata_code']    ?? '') : '',
+            'flight'       => sanitize_text_field($loc['flight'] ?? ''),
+            'no_flight'    => !empty($loc['no_flight_info']),
+        ];
+    }
+
+    private static function loc_label(?array $loc): string {
         if (!is_array($loc)) return '';
         $mode = $loc['mode'] ?? '';
-        $zip  = sanitize_text_field($loc['zip'] ?? '');
-        $zip_str = $zip ? " [ZIP: {$zip}]" : '';
         if ($mode === 'address') {
-            return sanitize_text_field($loc['address']['formatted_address'] ?? '') . $zip_str;
+            return sanitize_text_field($loc['address']['formatted_address'] ?? $loc['_rawText'] ?? '');
         }
         if ($mode === 'airport') {
             $a = $loc['airport'] ?? [];
             $name = sanitize_text_field($a['airport_name'] ?? '');
-            $iata = sanitize_text_field($a['iata_code'] ?? '');
-            return trim("{$name} ({$iata})") . $zip_str;
+            $iata = sanitize_text_field($a['iata_code']    ?? '');
+            return trim("{$name} ({$iata})");
         }
         return '';
     }
 
-    /** Extract zip from a location object safely */
-    private static function loc_zip($loc): string {
+    private static function loc_zip(?array $loc): string {
         if (!is_array($loc)) return '';
         return sanitize_text_field($loc['zip'] ?? '');
+    }
+
+    private static function segment_summary(array $seg): string {
+        $dt      = sanitize_text_field($seg['datetime'] ?? '');
+        $pickup  = self::loc_label($seg['pickup']  ?? null);
+        $dropoff = self::loc_label($seg['dropoff'] ?? null);
+        $stops   = $seg['stops'] ?? [];
+        $stops_txt = '';
+        if (!empty($stops)) {
+            $parts = [];
+            foreach ($stops as $s) $parts[] = self::loc_label($s);
+            $stops_txt = 'Stops: ' . implode(' → ', array_filter($parts)) . "\n";
+        }
+        return trim("Date/Time: {$dt}\nPick-Up: {$pickup}\n{$stops_txt}Drop-Off: {$dropoff}");
     }
 
     private static function apply_placeholders(string $content, array $ph): string {
         return strtr($content, $ph);
     }
 
-    /**
-     * Log email results to WordPress debug log.
-     * Enable by adding to wp-config.php:
-     *   define('WP_DEBUG', true);
-     *   define('WP_DEBUG_LOG', true);
-     */
     private static function log(string $msg): void {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[FGBW Email] ' . $msg);
-        }
+        if (defined('WP_DEBUG') && WP_DEBUG) error_log('[FGBW Email] ' . $msg);
     }
 
     public static function send_customer(int $booking_id, array $payload): void {
         $to = sanitize_email($payload['email'] ?? '');
-
         self::log("send_customer called. Booking #{$booking_id}. To: '{$to}'");
-
-        if (!$to) {
-            self::log("send_customer ABORTED: empty or invalid customer email.");
-            return;
-        }
+        if (!$to) { self::log("send_customer ABORTED: empty/invalid email."); return; }
 
         $ph   = self::placeholders($booking_id, $payload);
-        $subj = fgbw_get_option('email_customer_subject', 'Your booking #{booking_id} is received');
-        $body = fgbw_get_option('email_customer_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/customer.php'));
+        $subj = fgbw_get_option('email_customer_subject', 'Your Reservation Was Successfully Submitted!');
+        $body = self::resolve_template('email_customer_body',
+                    FGBW_PLUGIN_DIR . 'templates/emails/customer.php');
 
-        $subj = self::apply_placeholders($subj, $ph);
-        $body = self::apply_placeholders($body, $ph);
-
-        $headers = ['Content-Type: text/html; charset=UTF-8'];
-
-        self::log("send_customer calling wp_mail(). Subject: '{$subj}'");
-
-        $result = wp_mail($to, $subj, $body, $headers);
-
-        if ($result) {
-            self::log("send_customer wp_mail() returned TRUE for {$to}. Check spam folder if not received.");
-        } else {
-            global $phpmailer;
-            $error = isset($phpmailer) ? $phpmailer->ErrorInfo : 'Unknown error — phpmailer not available';
-            self::log("send_customer wp_mail() FAILED for {$to}. Error: {$error}");
-        }
+        $result = wp_mail($to, self::apply_placeholders($subj, $ph),
+                          self::apply_placeholders($body, $ph),
+                          ['Content-Type: text/html; charset=UTF-8']);
+        self::log($result ? "send_customer OK → {$to}" : "send_customer FAILED → {$to}");
     }
 
     public static function send_admin(int $booking_id, array $payload): void {
-        $to = fgbw_get_option('admin_email', get_option('admin_email'));
-        $to = sanitize_email($to);
-
+        $to = sanitize_email(fgbw_get_option('admin_email', get_option('admin_email')));
         self::log("send_admin called. Booking #{$booking_id}. To: '{$to}'");
-
-        if (!$to) {
-            self::log("send_admin ABORTED: empty or invalid admin email.");
-            return;
-        }
+        if (!$to) { self::log("send_admin ABORTED: empty/invalid email."); return; }
 
         $ph   = self::placeholders($booking_id, $payload);
-        $subj = fgbw_get_option('email_admin_subject', 'New booking #{booking_id} received');
-        $body = fgbw_get_option('email_admin_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/admin.php'));
+        $subj = fgbw_get_option('email_admin_subject', 'New Reservation Submitted - {name}');
+        $body = self::resolve_template('email_admin_body',
+                    FGBW_PLUGIN_DIR . 'templates/emails/admin.php');
+        $result = wp_mail($to, self::apply_placeholders($subj, $ph),
+                          self::apply_placeholders($body, $ph),
+                          ['Content-Type: text/html; charset=UTF-8']);
+        self::log($result ? "send_admin OK → {$to}" : "send_admin FAILED → {$to}");
+    }
 
-        $subj = self::apply_placeholders($subj, $ph);
-        $body = self::apply_placeholders($body, $ph);
+    /**
+     * Resolve the email body to use.
+     *
+     * Priority:
+     *   1. A custom body saved in plugin settings — BUT only if it looks like
+     *      the current full HTML template (contains <!DOCTYPE or <table). This
+     *      guards against the common case where an admin saved the Settings page
+     *      while the old bare-bones template (<h2>Booking Confirmed…</h2>) was
+     *      still in the textarea, which would then permanently override the new
+     *      rich HTML file we ship.
+     *   2. The on-disk template file — always current, always the rich layout.
+     */
+    private static function resolve_template(string $option_key, string $file_path): string {
+        $stored = trim(fgbw_get_option($option_key, ''));
 
-        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        // Treat as valid custom template only if it contains full HTML structure
+        // markers. A bare old template (just <h2>…<pre>…) will not match and
+        // we fall through to the file, which is exactly what we want.
+        $looks_like_full_template = (
+            stripos($stored, '<!DOCTYPE') !== false ||
+            stripos($stored, '<table') !== false ||
+            stripos($stored, '{pickup_date}') !== false
+        );
 
-        self::log("send_admin calling wp_mail(). Subject: '{$subj}'");
-
-        $result = wp_mail($to, $subj, $body, $headers);
-
-        if ($result) {
-            self::log("send_admin wp_mail() returned TRUE for {$to}. Check spam folder if not received.");
-        } else {
-            global $phpmailer;
-            $error = isset($phpmailer) ? $phpmailer->ErrorInfo : 'Unknown error — phpmailer not available';
-            self::log("send_admin wp_mail() FAILED for {$to}. Error: {$error}");
+        if (!empty($stored) && $looks_like_full_template) {
+            return $stored;
         }
+
+        // Fall back to the on-disk file template (the rich HTML layout).
+        if (file_exists($file_path)) {
+            return file_get_contents($file_path);
+        }
+
+        // Last resort: return stored value even if it looks old, rather than empty.
+        return $stored;
     }
 }

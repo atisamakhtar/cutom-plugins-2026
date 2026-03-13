@@ -51,10 +51,14 @@ class FGBW_Settings {
         $out['email_customer_subject'] = sanitize_text_field($input['email_customer_subject'] ?? 'Your booking #{booking_id} is received');
         $out['email_admin_subject'] = sanitize_text_field($input['email_admin_subject'] ?? 'New booking #{booking_id} received');
 
-        // Allow basic HTML
-        $allowed = wp_kses_allowed_html('post');
-        $out['email_customer_body'] = wp_kses($input['email_customer_body'] ?? '', $allowed);
-        $out['email_admin_body'] = wp_kses($input['email_admin_body'] ?? '', $allowed);
+        // Email body templates contain full HTML (DOCTYPE, head, inline styles, etc.)
+        // wp_kses would strip those tags, silently corrupting the saved template and
+        // causing resolve_template() to always fall back to the on-disk file.
+        // We store the raw value here; only admins can reach this settings page
+        // (manage_options capability is checked by WordPress before this runs),
+        // so trusting their HTML input is safe — same as the built-in Custom HTML widget.
+        $out['email_customer_body'] = $input['email_customer_body'] ?? '';
+        $out['email_admin_body']    = $input['email_admin_body']    ?? '';
 
         return $out;
     }
@@ -88,30 +92,46 @@ class FGBW_Settings {
     }
 
     public function field_customer_subject(): void {
-        $v = esc_attr(fgbw_get_option('email_customer_subject', 'Your booking #{booking_id} is received'));
+        $v = esc_attr(fgbw_get_option('email_customer_subject', 'Your Reservation Was Successfully Submitted!'));
         echo "<input type='text' class='regular-text' name='fgbw_settings[email_customer_subject]' value='{$v}' />";
-        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize} {pickup_zip} {dropoff_zip} {return_pickup_zip} {return_dropoff_zip} {pickup_stops_zips} {return_stops_zips} {additional_note}';
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type_label} {order_type_label} {vehicle} {passenger_count} {pickup_date} {pickup_time} {pickup_location} {dropoff_location} {pickup_stops_html} {airline} {flight_number} {is_round_trip} {return_date} {return_time} {return_pickup_location} {return_dropoff_location} {return_airline} {return_flight_number} {carry_on} {checked} {oversize} {additional_note} {pickup_zip} {dropoff_zip}';
         echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 
     public function field_customer_body(): void {
-        $v = fgbw_get_option('email_customer_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/customer.php'));
-        echo "<textarea class='large-text' rows='10' name='fgbw_settings[email_customer_body]'>".esc_textarea($v)."</textarea>";
-        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize} {pickup_zip} {dropoff_zip} {return_pickup_zip} {return_dropoff_zip} {pickup_stops_zips} {return_stops_zips} {additional_note}';
+        // Show the current effective template: custom saved version if it is a
+        // full HTML template, otherwise the on-disk file (same logic as sending).
+        $stored = trim(fgbw_get_option('email_customer_body', ''));
+        $is_custom = !empty($stored) && (
+            stripos($stored, '<!DOCTYPE') !== false ||
+            stripos($stored, '<table')    !== false ||
+            stripos($stored, '{pickup_date}') !== false
+        );
+        $v = $is_custom ? $stored : file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/customer.php');
+        echo "<textarea class='large-text' rows='20' name='fgbw_settings[email_customer_body]'>".esc_textarea($v)."</textarea>";
+        echo "<p class='description'><strong>Tip:</strong> Clear this field and save to reset to the built-in HTML template. Full HTML (including DOCTYPE, inline styles) is preserved exactly as-is on save.</p>";
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type_label} {order_type_label} {vehicle} {passenger_count} {pickup_date} {pickup_time} {pickup_location} {dropoff_location} {pickup_stops_html} {airline} {flight_number} {is_round_trip} {return_date} {return_time} {return_pickup_location} {return_dropoff_location} {return_airline} {return_flight_number} {carry_on} {checked} {oversize} {additional_note} {pickup_zip} {dropoff_zip}';
         echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 
     public function field_admin_subject(): void {
-        $v = esc_attr(fgbw_get_option('email_admin_subject', 'New booking #{booking_id} received'));
+        $v = esc_attr(fgbw_get_option('email_admin_subject', 'New Reservation Submitted - {name}'));
         echo "<input type='text' class='regular-text' name='fgbw_settings[email_admin_subject]' value='{$v}' />";
-        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize} {pickup_zip} {dropoff_zip} {return_pickup_zip} {return_dropoff_zip} {pickup_stops_zips} {return_stops_zips} {additional_note}';
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type_label} {order_type_label} {vehicle} {passenger_count} {pickup_date} {pickup_time} {pickup_location} {dropoff_location} {pickup_stops_html} {airline} {flight_number} {is_round_trip} {return_date} {return_time} {return_pickup_location} {return_dropoff_location} {return_airline} {return_flight_number} {carry_on} {checked} {oversize} {additional_note} {pickup_zip} {dropoff_zip}';
         echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 
     public function field_admin_body(): void {
-        $v = fgbw_get_option('email_admin_body', file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/admin.php'));
-        echo "<textarea class='large-text' rows='10' name='fgbw_settings[email_admin_body]'>".esc_textarea($v)."</textarea>";
-        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type} {order_type} {vehicle} {passenger_count} {pickup_summary} {return_summary} {carry_on} {checked} {oversize} {pickup_zip} {dropoff_zip} {return_pickup_zip} {return_dropoff_zip} {pickup_stops_zips} {return_stops_zips} {additional_note}';
+        $stored = trim(fgbw_get_option('email_admin_body', ''));
+        $is_custom = !empty($stored) && (
+            stripos($stored, '<!DOCTYPE') !== false ||
+            stripos($stored, '<table')    !== false ||
+            stripos($stored, '{pickup_date}') !== false
+        );
+        $v = $is_custom ? $stored : file_get_contents(FGBW_PLUGIN_DIR . 'templates/emails/admin.php');
+        echo "<textarea class='large-text' rows='20' name='fgbw_settings[email_admin_body]'>".esc_textarea($v)."</textarea>";
+        echo "<p class='description'><strong>Tip:</strong> Clear this field and save to reset to the built-in HTML template. Full HTML (including DOCTYPE, inline styles) is preserved exactly as-is on save.</p>";
+        $ph = '{booking_id} {name} {first_name} {last_name} {email} {phone} {trip_type_label} {order_type_label} {vehicle} {passenger_count} {pickup_date} {pickup_time} {pickup_location} {dropoff_location} {pickup_stops_html} {airline} {flight_number} {is_round_trip} {return_date} {return_time} {return_pickup_location} {return_dropoff_location} {return_airline} {return_flight_number} {carry_on} {checked} {oversize} {additional_note} {pickup_zip} {dropoff_zip}';
         echo "<p class='description'>Available placeholders: <code>" . implode('</code> <code>', explode(' ', $ph)) . "</code></p>";
     }
 }

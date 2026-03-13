@@ -750,6 +750,97 @@
   padding: 24px;
 }
 
+/* ── Phone field: dial-code selector + number input ── */
+.fgbw__phone-wrap {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.fgbw__phone-wrap:focus-within {
+  border-color: #111827;
+  box-shadow: 0 0 0 3px rgba(17,24,39,0.08);
+}
+
+.fgbw__dial-code {
+  flex: 0 0 auto;
+  border: none;
+  border-right: 1px solid #d1d5db;
+  border-radius: 0;
+  background: #f9fafb;
+  padding: 0 10px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  outline: none;
+  min-width: 100px;
+  appearance: auto;
+}
+
+.fgbw__dial-code:focus {
+  background: #f3f4f6;
+}
+
+.fgbw__phone-wrap .fgbw__phone {
+  flex: 1 1 auto;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  min-width: 0;
+}
+
+.fgbw__phone-wrap .fgbw__phone:focus {
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Show red border on the wrapper when the inner input has a validation error */
+.fgbw__phone-wrap:has(.fgbw__input--error) {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+}
+
+/* Mobile: stack selector above number input */
+@media (max-width: 480px) {
+  .fgbw__phone-wrap {
+    flex-direction: column;
+    overflow: visible;
+    border: none;
+    gap: 6px;
+    background: transparent;
+    box-shadow: none !important;
+  }
+  .fgbw__phone-wrap:focus-within {
+    border: none;
+    box-shadow: none;
+  }
+  .fgbw__dial-code {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-right: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .fgbw__phone-wrap .fgbw__phone {
+    border: 1px solid #d1d5db !important;
+    border-radius: 8px !important;
+  }
+  .fgbw__phone-wrap .fgbw__phone:focus {
+    border-color: #111827 !important;
+    box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important;
+  }
+  .fgbw__phone-wrap:has(.fgbw__input--error) {
+    border: none;
+    box-shadow: none;
+  }
+  .fgbw__phone-wrap:has(.fgbw__input--error) .fgbw__phone {
+    border-color: #ef4444 !important;
+  }
+}
+
 .fgbw__luggage-sect h3,
 .fgbw__contact-sect h3 {
   margin: 0 0 16px 0;
@@ -1085,3 +1176,4 @@
   font-size: 14px;
   line-height: 1.5;
 }
+
