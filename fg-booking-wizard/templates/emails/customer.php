@@ -213,18 +213,25 @@
     <tr>
       <td style="background-color:#111827;padding:28px 32px;text-align:center;">
         <!--
-          Logo: 428x199px source. Displayed at 240x112 (natural downscale ~1.78x)
-          for sharp rendering on both standard and HiDPI/retina screens.
-          width + height HTML attrs required for Outlook layout stability.
+          Logo: PNG, 480x231px (2x retina source), transparent background.
+          Displayed at 240x116px CSS — sharp on all screens including HiDPI/Retina.
+          PNG used instead of WebP for universal email client support
+          (Gmail, Outlook 2013–2021, Apple Mail, Yahoo Mail all render PNG with transparency).
+          width+height HTML attrs = Outlook layout stability.
+          -ms-interpolation-mode:bicubic = Outlook high-quality downscale.
+          background-color on <a> matches footer so Outlook (which ignores PNG alpha) 
+          shows the logo on the same dark background instead of white.
         -->
-        <a href="https://optimusfleets.us" target="_blank" style="display:inline-block;text-decoration:none;line-height:0;">
+        <a href="https://optimusfleets.us" target="_blank"
+           style="display:inline-block;text-decoration:none;line-height:0;background-color:#111827;">
           <img src="{email_logo_url}"
                alt="Optimus Fleets LLC"
                width="240"
-               height="112"
+               height="116"
                border="0"
-               style="display:block;width:240px;max-width:240px;height:112px;margin:0 auto 18px;border:0;outline:none;-ms-interpolation-mode:bicubic;image-rendering:-webkit-optimize-contrast;" />
+               style="display:block;width:240px;height:116px;margin:0 auto;border:0;outline:none;-ms-interpolation-mode:bicubic;" />
         </a>
+        <div style="height:16px;"></div>
         <p style="margin:0 0 8px;font-size:13px;font-weight:500;letter-spacing:0.2px;">
           <a href="mailto:optimusfleetsllc@gmail.com" style="color:#FD8B48;text-decoration:none;">optimusfleetsllc@gmail.com</a>
           <span style="color:#4b5563;">&nbsp;&nbsp;|&nbsp;&nbsp;</span>

@@ -16,11 +16,14 @@ class FGBW_Email {
         $first_name = $name_parts[0] ?? '';
         $last_name  = $name_parts[1] ?? '';
 
-        // Email logo URL — from settings, falling back to the default Optimus logo
-        $email_logo_url = fgbw_get_option(
-            'email_logo_url',
-            'https://optimusfleets.us/wp-content/uploads/2026/02/optimus-logo-orange.webp'
-        );
+        // Email logo URL — from settings, falling back to the plugin-bundled
+        // transparent WebP (assets/images/email-logo.webp).
+        // The bundled file has a genuine transparent background (RGBA WebP) so it
+        // renders cleanly on the dark #111827 footer without any background box.
+        // PNG: universally supported by all email clients (Gmail, Outlook, Apple Mail).
+        // Transparent background. 480x231px source displayed at 240px = 2x retina sharp.
+        $default_logo = FGBW_PLUGIN_URL . 'assets/images/email-logo.png';
+        $email_logo_url = fgbw_get_option('email_logo_url', $default_logo);
 
         $trip_type  = sanitize_text_field($payload['trip_type']  ?? '');
         $order_type = sanitize_text_field($payload['order_type'] ?? '');

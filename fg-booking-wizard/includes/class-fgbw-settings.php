@@ -127,7 +127,7 @@ jQuery(function($){
 
     public function field_email_logo(): void {
         $v       = esc_url(fgbw_get_option('email_logo_url', ''));
-        $default = 'https://optimusfleets.us/wp-content/uploads/2026/02/optimus-logo-orange.webp';
+        $default = FGBW_PLUGIN_URL . 'assets/images/email-logo.png';
         $preview = $v ?: $default;
         ?>
         <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
