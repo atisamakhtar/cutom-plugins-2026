@@ -376,60 +376,179 @@
 
 .fgbw-flight-card {
   margin-top: 10px;
-  padding: 14px;
+  padding: 14px 16px;
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
 }
 
+/* Top row: airline name + badge on left, last-updated on right */
 .fgbw-flight-card__top {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fgbw-flight-card__top > div:first-child {
+  display: flex;
   align-items: center;
-  margin-bottom: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* "Last Updated: Today at 11:44 AM" */
+.fgbw-flight-card__updated {
+  font-size: 11px;
+  color: #6b7280;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fgbw-flight-card__updated span {
+  font-weight: 600;
+  color: #374151;
 }
 
 .fgbw-flight-badge {
-  padding: 4px 10px;
+  display: inline-block;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
   background: #111827;
   color: #fff;
 }
 
+/* Flight route row */
 .fgbw-flight-card__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .fgbw-flight-col {
   flex: 1;
 }
 
+.fgbw-flight-col--right {
+  text-align: right;
+}
+
 .fgbw-flight-iata {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
+  color: #111827;
+  line-height: 1.1;
 }
 
 .fgbw-flight-airport {
   font-size: 12px;
   color: #374151;
   margin-top: 2px;
+  line-height: 1.3;
 }
 
-.fgbw-flight-time {
+/* Status label + date + time — stacked like reference */
+.fgbw-flight-meta {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  gap: 0;
+}
+
+.fgbw-flight-meta small {
+  font-size: 10px;
+  font-weight: 600;
+  color: #9ca3af;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* "03/31/26" date line — matches reference MM/DD/YY */
+.fgbw-flight-date {
   font-size: 12px;
   color: #6b7280;
-  margin-top: 4px;
+  margin-top: 2px;
+  font-weight: 500;
 }
 
-.fgbw-flight-mid {
-  width: 40px;
-  text-align: center;
+.fgbw-flight-col--right .fgbw-flight-date {
+  text-align: right;
+}
+
+/* Bold large time "10:45 AM" */
+.fgbw-flight-time {
   font-size: 18px;
+  font-weight: 700;
   color: #111827;
+  margin-top: 1px;
+  line-height: 1.1;
+}
+
+/* Terminal / Gate details row */
+.fgbw-flight-details {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.fgbw-flight-col--right .fgbw-flight-details {
+  justify-content: flex-end;
+}
+
+.fgbw-flight-details span {
+  font-size: 10px;
+  color: #9ca3af;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.fgbw-flight-details strong {
+  color: #374151;
+  font-size: 11px;
+  display: block;
+  margin-top: 1px;
+}
+
+/* Plane icon divider */
+.fgbw-flight-mid {
+  width: 50px;
+  text-align: center;
+  font-size: 20px;
+  color: #6b7280;
+  padding-top: 4px;
+  flex-shrink: 0;
+}
+
+/* Date mismatch warning — shown when API result doesn't match selected date */
+.fgbw-flight-date-warn {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.4;
+}
+
+/* Flight date-required hint */
+.fgbw-flight-hint {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
 }
 
 /* Stop actions */

@@ -341,21 +341,55 @@
       this.$confirm.on("click", async () => {
         // If checkbox checked => bypass confirm
         if (this.state.noFlightInfo) return;
-        // Optional: call flight validation if both airline+flight present
+
         if (this.state.airport && this.state.airline && this.state.flight) {
+          const $result = this.$root.find(".fgbw-flight-result");
+
+          // ── Date/time is REQUIRED before we can fetch a date-specific flight ──
+          const dtInput = document.querySelector(
+            `[data-datetime-for="${this.tripSegment}"]`
+          );
+          const rawDt     = dtInput ? dtInput.value.trim() : "";
+          const dateMatch = rawDt.match(/(\d{4}-\d{2}-\d{2})/);
+          const flightDate = dateMatch ? dateMatch[1] : "";
+
+          if (!flightDate) {
+            $result.html(
+              `<div class="fgbw__error">
+                Please enter the <strong>Date &amp; Time</strong> above before confirming flight details.
+              </div>`
+            );
+            // Scroll / highlight the datetime field so it's obvious
+            if (dtInput) {
+              dtInput.focus();
+              dtInput.classList.add("fgbw__input--error");
+              setTimeout(() => dtInput.classList.remove("fgbw__input--error"), 3000);
+            }
+            return;
+          }
+
+          $result.html(`<div class="fgbw-loading">Loading flight details...</div>`);
+
           try {
             this.setLoading(true);
-            const res = await wpAjax("fgbw_validate_flight", {
-              airport_iata: this.state.airport.iata_code,
-              airline_iata: this.state.airline.iata_code,
+            const res = await wpAjax("fgbw_fetch_flight", {
+              airline_iata:  this.state.airline.iata_code,
               flight_number: this.state.flight,
+              flight_date:   flightDate,
+              airport_iata:  this.state.airport ? this.state.airport.iata_code : "",
             });
 
             if (res.success && res.data) {
+              // Log debug info to browser console for diagnosis
+              if (res.data._debug) {
+                console.log('[FGBW Flight Debug]', res.data._debug);
+              }
               this.renderFlightCard(res.data);
+            } else {
+              $result.html(`<div class="fgbw__error">${(res.data && res.data.message) || "Flight not found"}</div>`);
             }
           } catch (e) {
-            // If validation fails, you can show UI error — kept minimal here
+            $result.html(`<div class="fgbw__error">Unable to fetch flight details.</div>`);
           } finally {
             this.setLoading(false);
           }
@@ -432,9 +466,25 @@
         return;
       }
 
-      // Confirm enabled only when required airport chosen
-      const ok = !!this.state.airport;
+      // Confirm requires: airport selected + airline + flight number + date filled
+      const dtInput   = document.querySelector(`[data-datetime-for="${this.tripSegment}"]`);
+      const rawDt     = dtInput ? dtInput.value.trim() : "";
+      const hasDate   = /(\d{4}-\d{2}-\d{2})/.test(rawDt);
+      const ok = !!this.state.airport && !!this.state.airline && !!this.state.flight && hasDate;
       this.$confirm.prop("disabled", !ok).toggleClass("is-disabled", !ok);
+
+      // Show a hint when date is the only missing piece
+      const $result = this.$root.find(".fgbw-flight-result");
+      if (!hasDate && this.state.airport && this.state.airline && this.state.flight) {
+        $result.html(
+          `<div class="fgbw-flight-hint">
+            &#9432; Please fill in the <strong>Date &amp; Time</strong> field above to enable flight lookup.
+          </div>`
+        );
+      } else if ($result.find(".fgbw-flight-hint").length) {
+        // Clear hint once date is filled
+        $result.empty();
+      }
     }
 
     // async initAddressAutocomplete() {
@@ -639,6 +689,7 @@
         this.showDropdown("airport", mapped, (chosen) => {
           this.state.airport = chosen.value;
           this.$airport.val(chosen.value.airport_name + " (" + chosen.value.iata_code + ")");
+          this.$airport.attr("data-iata-code", chosen.value.iata_code);
           this.updateAirportUIState();
           this.emit();
           // Auto-populate the airport-pane ZIP via reverse geocode using the
@@ -762,32 +813,63 @@
       const $result = this.$root.find(".fgbw-flight-result");
       if (!$result.length) return;
 
+      const lastUpd = data.last_updated
+        ? `<div class="fgbw-flight-card__updated"><span>Last Updated:</span> ${data.last_updated}</div>`
+        : "";
+
+      const depTerm  = data.departure_terminal || "–";
+      const depGate  = data.departure_gate      || "–";
+      const arrTerm  = data.arrival_terminal    || "–";
+      const arrGate  = data.arrival_gate        || "–";
+
+      // Warn when API could not find a flight matching the selected date
+      const dateWarn = (data.date_matched === false)
+        ? `<div class="fgbw-flight-date-warn">
+            &#9888; Flight data shown may not match your selected date. This is the most recent available record.
+           </div>`
+        : "";
+
       $result.html(`
         <div class="fgbw-flight-card">
-            <div class="fgbw-flight-card__top">
-                <strong>${data.airline} (${data.flight_iata})</strong>
-                <span class="fgbw-flight-badge">
-                    ${(data.status || "").toUpperCase()}
-                </span>
+          ${dateWarn}
+          <div class="fgbw-flight-card__top">
+            <div>
+              <strong>${data.airline} (${data.flight_iata})</strong>
+              <span class="fgbw-flight-badge">${(data.status || "").toUpperCase()}</span>
             </div>
-
-            <div class="fgbw-flight-card__row">
-                <div>
-                    <strong>${data.departure_iata}</strong><br>
-                    ${data.departure_airport}<br>
-                    ${this.formatDT(data.departure_time)}
-                </div>
-
-                <div>✈</div>
-
-                <div>
-                    <strong>${data.arrival_iata}</strong><br>
-                    ${data.arrival_airport}<br>
-                    ${this.formatDT(data.arrival_time)}
-                </div>
+            ${lastUpd}
+          </div>
+          <div class="fgbw-flight-card__row">
+            <div class="fgbw-flight-col">
+              <div class="fgbw-flight-iata">${data.departure_iata || "–"}</div>
+              <div class="fgbw-flight-airport">${data.departure_airport || "–"}</div>
+              <div class="fgbw-flight-meta">
+                <small>${data.departure_status_label || "SCHEDULED"}</small>
+                <div class="fgbw-flight-date">${flightDate(data.departure_time)}</div>
+                <div class="fgbw-flight-time">${flightTime(data.departure_time)}</div>
+              </div>
+              <div class="fgbw-flight-details">
+                <span>TERMINAL <strong>${depTerm}</strong></span>
+                <span>GATE <strong>${depGate}</strong></span>
+              </div>
             </div>
+            <div class="fgbw-flight-mid">&#9992;</div>
+            <div class="fgbw-flight-col fgbw-flight-col--right">
+              <div class="fgbw-flight-iata">${data.arrival_iata || "–"}</div>
+              <div class="fgbw-flight-airport">${data.arrival_airport || "–"}</div>
+              <div class="fgbw-flight-meta">
+                <small>${data.arrival_status_label || "SCHEDULED"}</small>
+                <div class="fgbw-flight-date">${flightDate(data.arrival_time)}</div>
+                <div class="fgbw-flight-time">${flightTime(data.arrival_time)}</div>
+              </div>
+              <div class="fgbw-flight-details">
+                <span>TERMINAL <strong>${arrTerm}</strong></span>
+                <span>GATE <strong>${arrGate}</strong></span>
+              </div>
+            </div>
+          </div>
         </div>
-    `);
+      `);
     }
 
     formatDT(s) {
@@ -915,6 +997,14 @@
           if (segKey === "oneway") this.state.trip.pickup.datetime = v;
           if (segKey === "round_pickup") this.state.trip.pickup.datetime = v;
           if (segKey === "round_return") this.state.trip.return.datetime = v;
+          // Re-evaluate Confirm button state for all blocks in this segment
+          // (date is now required — button must enable once date is typed)
+          const seg = this.blocks[segKey] || {};
+          [seg.pickup, seg.dropoff, ...(seg.stops || [])].forEach(b => {
+            if (b && typeof b.updateAirportUIState === 'function') {
+              b.updateAirportUIState();
+            }
+          });
         });
       };
       make("oneway");
@@ -1947,6 +2037,25 @@
       return;
     }
 
+    // Read the segment datetime — required before making the API call
+    const segBlock  = block.closest("[data-segment]");
+    const segKey    = segBlock ? segBlock.getAttribute("data-segment") : "";
+    const dtInput   = segKey ? document.querySelector(`[data-datetime-for="${segKey}"]`) : null;
+    const rawDt     = dtInput ? dtInput.value.trim() : "";
+    const dateMatch = rawDt.match(/(\d{4}-\d{2}-\d{2})/);
+    const flightDate = dateMatch ? dateMatch[1] : "";
+
+    // Block if no date selected — API returns wrong flight without a date
+    if (!flightDate) {
+      resultBox.innerHTML = `<div class="fgbw__error">Please enter the <strong>Date &amp; Time</strong> above before confirming flight details.</div>`;
+      if (dtInput) {
+        dtInput.focus();
+        dtInput.classList.add("fgbw__input--error");
+        setTimeout(() => dtInput.classList.remove("fgbw__input--error"), 3000);
+      }
+      return;
+    }
+
     resultBox.innerHTML = `<div class="fgbw-loading">Loading flight details...</div>`;
 
     fetch(fgbw_ajax.ajax_url, {
@@ -1956,7 +2065,11 @@
         action: "fgbw_fetch_flight",
         _wpnonce: fgbw_ajax.nonce,
         airline_iata: airlineIata,
-        flight_number: flightNo
+        flight_number: flightNo,
+        flight_date:  flightDate,
+        airport_iata: block.querySelector(".fgbw__airport")
+                        ? (block.querySelector(".fgbw__airport").dataset.iataCode || "")
+                        : "",
       })
     })
       .then(r => r.json())
@@ -1964,6 +2077,9 @@
         if (!res.success) {
           resultBox.innerHTML = `<div class="fgbw__error">${res.data?.message || "Flight not found"}</div>`;
           return;
+        }
+        if (res.data._debug) {
+          console.log('[FGBW Flight Debug]', res.data._debug);
         }
         renderFlightCard(resultBox, res.data);
       })
@@ -1974,29 +2090,83 @@
   });
 
   function renderFlightCard(container, data) {
+    const lastUpd = data.last_updated
+      ? `<div class="fgbw-flight-card__updated"><span>Last Updated:</span> ${data.last_updated}</div>`
+      : "";
+    const depTerm = data.departure_terminal || "–";
+    const depGate = data.departure_gate     || "–";
+    const arrTerm = data.arrival_terminal   || "–";
+    const arrGate = data.arrival_gate       || "–";
+
+    const dateWarn = (data.date_matched === false)
+      ? `<div class="fgbw-flight-date-warn">
+          &#9888; Flight data shown may not match your selected date. This is the most recent available record.
+         </div>`
+      : "";
+
     container.innerHTML = `
     <div class="fgbw-flight-card">
+      ${dateWarn}
       <div class="fgbw-flight-card__top">
-        <strong>${data.airline} (${data.flight_iata})</strong>
-        <span class="fgbw-flight-badge">${(data.status || "").toUpperCase()}</span>
+        <div>
+          <strong>${data.airline} (${data.flight_iata})</strong>
+          <span class="fgbw-flight-badge">${(data.status || "").toUpperCase()}</span>
+        </div>
+        ${lastUpd}
       </div>
       <div class="fgbw-flight-card__row">
         <div class="fgbw-flight-col">
-          <div class="fgbw-flight-iata">${data.departure_iata || "-"}</div>
-          <div class="fgbw-flight-airport">${data.departure_airport || "-"}</div>
-          <div class="fgbw-flight-time">${formatDT(data.departure_time)}</div>
+          <div class="fgbw-flight-iata">${data.departure_iata || "–"}</div>
+          <div class="fgbw-flight-airport">${data.departure_airport || "–"}</div>
+          <div class="fgbw-flight-meta">
+            <small>${data.departure_status_label || "SCHEDULED"}</small>
+            <div class="fgbw-flight-date">${flightDate(data.departure_time)}</div>
+            <div class="fgbw-flight-time">${flightTime(data.departure_time)}</div>
+          </div>
+          <div class="fgbw-flight-details">
+            <span>TERMINAL <strong>${depTerm}</strong></span>
+            <span>GATE <strong>${depGate}</strong></span>
+          </div>
         </div>
-        <div class="fgbw-flight-mid">✈</div>
-        <div class="fgbw-flight-col">
-          <div class="fgbw-flight-iata">${data.arrival_iata || "-"}</div>
-          <div class="fgbw-flight-airport">${data.arrival_airport || "-"}</div>
-          <div class="fgbw-flight-time">${formatDT(data.arrival_time)}</div>
+        <div class="fgbw-flight-mid">&#9992;</div>
+        <div class="fgbw-flight-col fgbw-flight-col--right">
+          <div class="fgbw-flight-iata">${data.arrival_iata || "–"}</div>
+          <div class="fgbw-flight-airport">${data.arrival_airport || "–"}</div>
+          <div class="fgbw-flight-meta">
+            <small>${data.arrival_status_label || "SCHEDULED"}</small>
+            <div class="fgbw-flight-date">${flightDate(data.arrival_time)}</div>
+            <div class="fgbw-flight-time">${flightTime(data.arrival_time)}</div>
+          </div>
+          <div class="fgbw-flight-details">
+            <span>TERMINAL <strong>${arrTerm}</strong></span>
+            <span>GATE <strong>${arrGate}</strong></span>
+          </div>
         </div>
       </div>
     </div>
   `;
   }
 
+  // Format ISO timestamp → "MM/DD/YY"  (matches reference: 03/31/26)
+  function flightDate(s) {
+    if (!s) return "";
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return "";
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const yy = String(d.getFullYear()).slice(-2);
+    return `${mm}/${dd}/${yy}`;
+  }
+
+  // Format ISO timestamp → "H:MM AM/PM"  (matches reference: 10:45 AM)
+  function flightTime(s) {
+    if (!s) return "–";
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+  }
+
+  // Legacy helper kept for any other uses
   function formatDT(s) {
     if (!s) return "-";
     const d = new Date(s);
