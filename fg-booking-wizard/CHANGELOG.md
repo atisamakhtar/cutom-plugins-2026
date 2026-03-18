@@ -229,3 +229,29 @@ After running this query:
 **WordPress Version:** 6.x compatible
 **PHP Version:** 7.4+ required
 
+
+## v1.7.44 — PDF Generation & Secure Download
+
+### New Files
+- `includes/class-fgbw-pdf.php` — FGBW_PDF class; handles generation, token signing, secure serving
+- `composer.json` — declares `mpdf/mpdf ^8.2` as the PDF dependency
+
+### Modified Files
+- `fg-booking-wizard.php` — bumped version to 1.7.44; loads FGBW_PDF; registers `init` hooks for PDF directory setup and secure file serving
+- `includes/class-fgbw-ajax.php` — `submit_booking()` calls `FGBW_PDF::generate()` after a successful DB insert and passes the signed URL to `FGBW_Email::send_admin()`
+- `includes/class-fgbw-email.php` — `send_admin()` accepts optional `$pdf_url` (default `false`); new private `pdf_cta_block()` renders the blue CTA button; `{pdf_download_button}` placeholder injected into body before send
+- `templates/emails/admin.php` — added `{pdf_download_button}` placeholder row between the Return section and the Signature block
+
+### Behaviour
+1. On successful form submission the PDF is generated server-side (requires mPDF — install via `composer install` in the plugin root).
+2. The PDF is saved to `wp-content/uploads/fgbw-pdfs/booking-{id}-{timestamp}.pdf`.
+3. The directory is protected from direct public access via `.htaccess` (Apache/LiteSpeed) and an `index.php` stub (Nginx).
+4. The admin email receives a signed, token-protected "Download Reservation PDF" CTA button.
+5. The customer email is unchanged — no PDF link or attachment.
+6. If mPDF is not installed the booking still saves and emails send normally; only the PDF step is skipped (error logged).
+
+### Installation step required
+```
+cd wp-content/plugins/fg-fixed
+composer install --no-dev --optimize-autoloader
+```

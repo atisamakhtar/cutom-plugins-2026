@@ -264,7 +264,15 @@ class FGBW_Email {
         self::log($result ? "send_customer OK → {$to}" : "send_customer FAILED → {$to}");
     }
 
-    public static function send_admin(int $booking_id, array $payload): void {
+    /**
+     * Send the admin notification email with the PDF attached.
+     *
+     * @param int         $booking_id  The booking ID.
+     * @param array       $payload     The booking payload.
+     * @param array|false $pdf_result  ['filepath'=>...,'url'=>...] from FGBW_PDF::generate(), or false.
+     *                                 PDF is attached to this email only — never sent to customer.
+     */
+    public static function send_admin(int $booking_id, array $payload, $pdf_result = false): void {
         $to = sanitize_email(fgbw_get_option('admin_email', get_option('admin_email')));
         self::log("send_admin called. Booking #{$booking_id}. To: '{$to}'");
         if (!$to) { self::log("send_admin ABORTED: empty/invalid email."); return; }
@@ -273,46 +281,43 @@ class FGBW_Email {
         $subj = fgbw_get_option('email_admin_subject', 'New Reservation Submitted - {name}');
         $body = self::resolve_template('email_admin_body',
                     FGBW_PLUGIN_DIR . 'templates/emails/admin.php');
-        $result = wp_mail($to, self::apply_placeholders($subj, $ph),
-                          self::apply_placeholders($body, $ph),
-                          ['Content-Type: text/html; charset=UTF-8']);
+
+        // Build headers
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+
+        // Build attachments — attach PDF file directly if generated successfully.
+        $attachments = [];
+        if ( is_array($pdf_result) && ! empty($pdf_result['filepath']) && file_exists($pdf_result['filepath']) ) {
+            $attachments[] = $pdf_result['filepath'];
+            self::log("PDF attached to admin email for booking #{$booking_id}: " . $pdf_result['filepath']);
+        } else {
+            self::log("No PDF attachment for booking #{$booking_id}.");
+        }
+
+        $result = wp_mail(
+            $to,
+            self::apply_placeholders($subj, $ph),
+            self::apply_placeholders($body, $ph),
+            $headers,
+            $attachments
+        );
         self::log($result ? "send_admin OK → {$to}" : "send_admin FAILED → {$to}");
     }
 
     /**
-     * Resolve the email body to use.
+     * Always load the email body from the on-disk template file.
      *
-     * Priority:
-     *   1. A custom body saved in plugin settings — BUT only if it looks like
-     *      the current full HTML template (contains <!DOCTYPE or <table). This
-     *      guards against the common case where an admin saved the Settings page
-     *      while the old bare-bones template (<h2>Booking Confirmed…</h2>) was
-     *      still in the textarea, which would then permanently override the new
-     *      rich HTML file we ship.
-     *   2. The on-disk template file — always current, always the rich layout.
+     * The DB-stored body (email_customer_body / email_admin_body) is intentionally
+     * ignored. This prevents stale cached values from overriding the current
+     * template files after a plugin update. The settings page no longer exposes
+     * body textarea fields, so there is no legitimate reason to read from the DB.
      */
     private static function resolve_template(string $option_key, string $file_path): string {
-        $stored = trim(fgbw_get_option($option_key, ''));
-
-        // Treat as valid custom template only if it contains full HTML structure
-        // markers. A bare old template (just <h2>…<pre>…) will not match and
-        // we fall through to the file, which is exactly what we want.
-        $looks_like_full_template = (
-            stripos($stored, '<!DOCTYPE') !== false ||
-            stripos($stored, '<table') !== false ||
-            stripos($stored, '{pickup_date}') !== false
-        );
-
-        if (!empty($stored) && $looks_like_full_template) {
-            return $stored;
-        }
-
-        // Fall back to the on-disk file template (the rich HTML layout).
         if (file_exists($file_path)) {
             return file_get_contents($file_path);
         }
-
-        // Last resort: return stored value even if it looks old, rather than empty.
-        return $stored;
+        // Absolute fallback — should never happen in a correctly installed plugin.
+        self::log("Template file not found: {$file_path}");
+        return '';
     }
 }

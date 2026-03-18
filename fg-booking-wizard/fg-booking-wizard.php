@@ -2,14 +2,14 @@
 /**
  * Plugin Name: FG Booking Wizard
  * Description: 3-step fleet booking wizard with one-way/round-trip segments, Google Places + Aviationstack proxy, and DB storage.
- * Version: 1.7.28
+ * Version: 1.7.43
  * Author: FG
  * Text Domain: fgbw
  */
 
 if (!defined('ABSPATH')) exit;
 
-define('FGBW_VERSION', '1.7.28');
+define('FGBW_VERSION', '1.7.44');
 define('FGBW_PLUGIN_FILE', __FILE__);
 define('FGBW_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('FGBW_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -17,6 +17,7 @@ define('FGBW_PLUGIN_URL', plugin_dir_url(__FILE__));
 require_once FGBW_PLUGIN_DIR . 'includes/helpers.php';
 require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-activator.php';
 require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-plugin.php';
+require_once FGBW_PLUGIN_DIR . 'includes/class-fgbw-pdf.php';
 
 register_activation_hook(__FILE__, ['FGBW_Activator', 'activate']);
 register_deactivation_hook(__FILE__, ['FGBW_Activator', 'deactivate']);
@@ -25,50 +26,49 @@ add_action('plugins_loaded', function () {
     FGBW_Plugin::instance()->init();
 });
 
+// Ensure FGBW errors always reach the log file, even if WP_DEBUG is off.
+if ( ! defined('WP_DEBUG_LOG') ) {
+    define('WP_DEBUG_LOG', true);
+}
+
+// Initialise PDF storage directory — runs on both plugins_loaded and init
+// to guarantee the upload_dir is set before any AJAX PDF generation call.
+add_action('plugins_loaded', function () {
+    FGBW_PDF::init();
+}, 20);
+add_action('init', function () {
+    FGBW_PDF::init();
+});
+
+// Serve secure PDF downloads (token-protected — not publicly browsable).
+add_action('init', function () {
+    if ( isset( $_GET['fgbw_pdf'] ) ) {
+        FGBW_PDF::serve_download();
+    }
+});
+
 /**
- * One-time migration: clear any stale email body saved in the DB that matches
- * the old bare-bones template format (pre-v1.7.13). Runs once per site and
- * stamps a version flag so it never runs again.
+ * Migration v1744: unconditionally clear email_customer_body and email_admin_body
+ * from the DB. From v1.7.44 onwards, resolve_template() always reads from the
+ * on-disk PHP file — DB-stored bodies are never used. This one-time cleanup
+ * ensures any previously saved value (from the old settings textarea) is wiped
+ * so it can never override the current on-disk template.
  *
- * The old template started with a plain <h2> tag and had no DOCTYPE/table
- * structure. If that value is still sitting in fgbw_settings it would
- * override our new rich HTML template files every time, because
- * fgbw_get_option returns the DB value as non-empty. This migration wipes it
- * so resolve_template() falls through to the on-disk file.
+ * Uses a new migration key so it runs even on sites that completed the earlier
+ * v1713 migration.
  */
 add_action('plugins_loaded', function () {
-    $migrated_key = 'fgbw_email_template_migration_v1713';
-    if (get_option($migrated_key)) {
-        return; // Already ran.
+    if (get_option('fgbw_email_template_migration_v1744')) {
+        return; // Already ran on this site.
     }
 
     $opts = get_option('fgbw_settings', []);
-    $changed = false;
 
-    foreach (['email_customer_body', 'email_admin_body'] as $key) {
-        $saved = trim($opts[$key] ?? '');
-        if (empty($saved)) continue;
+    // Wipe both body keys unconditionally — on-disk files are the sole source of truth.
+    $opts['email_customer_body'] = '';
+    $opts['email_admin_body']    = '';
 
-        // Old bare template fingerprints — none of these appear in the new
-        // full HTML template files so they are safe discriminators.
-        $is_old_bare = (
-            stripos($saved, '<h2>Booking Confirmed')  !== false ||
-            stripos($saved, '<h2>New Booking:')        !== false ||
-            // Catch any saved value that has NO DOCTYPE and NO <table at all —
-            // the new templates both have extensive <table> structure.
-            ( stripos($saved, '<!DOCTYPE') === false && stripos($saved, '<table') === false )
-        );
+    update_option('fgbw_settings', $opts);
+    update_option('fgbw_email_template_migration_v1744', '1');
 
-        if ($is_old_bare) {
-            $opts[$key] = ''; // Clear — resolve_template() will use the file.
-            $changed = true;
-        }
-    }
-
-    if ($changed) {
-        update_option('fgbw_settings', $opts);
-    }
-
-    // Mark migration done regardless, so this never runs again.
-    update_option($migrated_key, '1');
-}, 5); // Priority 5 — runs before FGBW_Plugin::init() at default priority 10.
+}, 5); // Priority 5 — before FGBW_Plugin::init() at priority 10.

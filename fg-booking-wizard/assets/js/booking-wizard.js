@@ -368,7 +368,9 @@
             return;
           }
 
-          $result.html(`<div class="fgbw-loading">Loading flight details...</div>`);
+          // Re-query $result each time so it's never stale after long waits
+          const getResult = () => this.$root.find(".fgbw-flight-result");
+          getResult().html(`<div class="fgbw-loading">Loading flight details...</div>`);
 
           try {
             this.setLoading(true);
@@ -379,17 +381,16 @@
               airport_iata:  this.state.airport ? this.state.airport.iata_code : "",
             });
 
-            if (res.success && res.data) {
-              // Log debug info to browser console for diagnosis
-              if (res.data._debug) {
-                console.log('[FGBW Flight Debug]', res.data._debug);
-              }
+            if (res && res.success && res.data) {
               this.renderFlightCard(res.data);
             } else {
-              $result.html(`<div class="fgbw__error">${(res.data && res.data.message) || "Flight not found"}</div>`);
+              const msg = (res && res.data && res.data.message) || "Flight not found. Please try again.";
+              getResult().html(`<div class="fgbw__error">${msg}</div>`);
             }
           } catch (e) {
-            $result.html(`<div class="fgbw__error">Unable to fetch flight details.</div>`);
+            console.error('[FGBW] Flight fetch error:', e);
+            if (e && e.responseText) console.error('[FGBW] Raw response:', e.responseText.substring(0, 300));
+            getResult().html(`<div class="fgbw__error">Unable to fetch flight details. Please try again.</div>`);
           } finally {
             this.setLoading(false);
           }
@@ -473,16 +474,25 @@
       const ok = !!this.state.airport && !!this.state.airline && !!this.state.flight && hasDate;
       this.$confirm.prop("disabled", !ok).toggleClass("is-disabled", !ok);
 
-      // Show a hint when date is the only missing piece
+      // Show a hint when date is the only missing piece.
+      // IMPORTANT: only touch the result area for hint messages — never clear
+      // flight cards or error messages that were set by the confirm handler.
       const $result = this.$root.find(".fgbw-flight-result");
+      const hasHint  = $result.find(".fgbw-flight-hint").length > 0;
+      const hasCard  = $result.find(".fgbw-flight-card").length > 0;
+      const hasError = $result.find(".fgbw__error").length > 0;
+
       if (!hasDate && this.state.airport && this.state.airline && this.state.flight) {
-        $result.html(
-          `<div class="fgbw-flight-hint">
-            &#9432; Please fill in the <strong>Date &amp; Time</strong> field above to enable flight lookup.
-          </div>`
-        );
-      } else if ($result.find(".fgbw-flight-hint").length) {
-        // Clear hint once date is filled
+        // Only show hint if no card/error is already displayed
+        if (!hasCard && !hasError) {
+          $result.html(
+            `<div class="fgbw-flight-hint">
+              &#9432; Please fill in the <strong>Date &amp; Time</strong> field above to enable flight lookup.
+            </div>`
+          );
+        }
+      } else if (hasHint) {
+        // Only clear if it's a hint — never wipe cards or errors
         $result.empty();
       }
     }
@@ -874,9 +884,13 @@
 
     formatDT(s) {
       if (!s) return "-";
-      const d = new Date(s);
-      if (isNaN(d.getTime())) return s;
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // Parse directly from ISO string — no timezone conversion
+      const tPart = s.length >= 16 ? s.substring(11, 16) : null;
+      if (!tPart || !/^\d{2}:\d{2}$/.test(tPart)) return s;
+      let [h, m] = tPart.split(':').map(Number);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
     }
 
   }
@@ -1918,7 +1932,7 @@
 
     async submit() {
 
-      console.log("=== FGBW Submit clicked ===");
+
       console.log("Current step:", this.step);
 
       // FIX: Populate state.contact from DOM BEFORE validateStep(2) runs.
@@ -2078,13 +2092,12 @@
           resultBox.innerHTML = `<div class="fgbw__error">${res.data?.message || "Flight not found"}</div>`;
           return;
         }
-        if (res.data._debug) {
-          console.log('[FGBW Flight Debug]', res.data._debug);
-        }
         renderFlightCard(resultBox, res.data);
       })
-      .catch(() => {
-        resultBox.innerHTML = `<div class="fgbw__error">Unable to fetch flight details.</div>`;
+      .catch((e) => {
+        console.error('[FGBW] Flight fetch error:', e);
+        if (e && e.responseText) console.error('[FGBW] Raw response:', e.responseText.substring(0, 500));
+        resultBox.innerHTML = `<div class="fgbw__error">Unable to fetch flight details. Please try again.</div>`;
       });
 
   });
@@ -2098,11 +2111,23 @@
     const arrTerm = data.arrival_terminal   || "–";
     const arrGate = data.arrival_gate       || "–";
 
-    const dateWarn = (data.date_matched === false)
-      ? `<div class="fgbw-flight-date-warn">
-          &#9888; Flight data shown may not match your selected date. This is the most recent available record.
-         </div>`
-      : "";
+    let dateWarn = "";
+    if (data.date_matched === false) {
+      if (data.nearest_date) {
+        // Parse nearest_date directly — avoid timezone shift
+        const ndParts = (data.nearest_date || '').split('-');
+        const ndFmt = ndParts.length === 3
+          ? ndParts[1] + '/' + ndParts[2] + '/' + ndParts[0].slice(-2)
+          : data.nearest_date;
+        dateWarn = `<div class="fgbw-flight-date-warn">
+          &#9888; This flight does not operate on your selected date. Showing nearest available: <strong>${ndFmt}</strong>.
+        </div>`;
+      } else {
+        dateWarn = `<div class="fgbw-flight-date-warn">
+          &#9888; No flight data found for your selected date. This is the most recent available record.
+        </div>`;
+      }
+    }
 
     container.innerHTML = `
     <div class="fgbw-flight-card">
@@ -2148,22 +2173,29 @@
   }
 
   // Format ISO timestamp → "MM/DD/YY"  (matches reference: 03/31/26)
+  // Parse date from ISO string WITHOUT timezone conversion.
+  // Flight times are in the airport's local time — we must not shift them
+  // to the user's browser timezone (e.g. UTC+5 would shift 10:44 UTC to 15:44).
+  // "2026-03-31T10:44:00+00:00" → extract "2026-03-31" directly → "03/31/26"
   function flightDate(s) {
     if (!s) return "";
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return "";
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const yy = String(d.getFullYear()).slice(-2);
-    return `${mm}/${dd}/${yy}`;
+    const datePart = s.substring(0, 10); // "2026-03-31"
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return "";
+    const [yr, mo, dy] = datePart.split('-');
+    return `${mo}/${dy}/${yr.slice(-2)}`;
   }
 
-  // Format ISO timestamp → "H:MM AM/PM"  (matches reference: 10:45 AM)
+  // Parse time from ISO string WITHOUT timezone conversion.
+  // "2026-03-31T10:44:00+00:00" → "10:44 AM"  regardless of user's timezone.
+  // Flight times from Aviationstack represent the airport's local schedule.
   function flightTime(s) {
     if (!s) return "–";
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return s;
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+    const tPart = s.length >= 16 ? s.substring(11, 16) : null; // "HH:MM"
+    if (!tPart || !/^\d{2}:\d{2}$/.test(tPart)) return s;
+    let [h, m] = tPart.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
   }
 
   // Legacy helper kept for any other uses

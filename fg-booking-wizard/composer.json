@@ -1,0 +1,12 @@
+{
+    "name": "fg/booking-wizard",
+    "description": "FG Booking Wizard — PDF dependency",
+    "require": {
+        "mpdf/mpdf": "^8.2"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    }
+}

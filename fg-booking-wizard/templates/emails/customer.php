@@ -231,7 +231,10 @@
                border="0"
                style="display:block;width:240px;height:116px;margin:0 auto;border:0;outline:none;-ms-interpolation-mode:bicubic;" />
         </a>
-        <div style="height:16px;"></div>
+        <div style="height:12px;"></div>
+        <p style="margin:0 0 6px;">
+          <a href="https://www.optimusfleets.us" target="_blank" style="color:#FD8B48;text-decoration:none;font-size:14px;font-weight:600;letter-spacing:0.3px;">www.optimusfleets.us</a>
+        </p>
         <p style="margin:0 0 8px;font-size:13px;font-weight:500;letter-spacing:0.2px;">
           <a href="mailto:optimusfleetsllc@gmail.com" style="color:#FD8B48;text-decoration:none;">optimusfleetsllc@gmail.com</a>
           <span style="color:#4b5563;">&nbsp;&nbsp;|&nbsp;&nbsp;</span>

@@ -338,8 +338,23 @@ class FGBW_AJAX
         // BUG 3 FIX: Pass the full decoded $payload (not the flat $row) to FGBW_Email,
         // which needs the nested trip/pickup/dropoff structure for its placeholders.
         // Also call the proper HTML email methods instead of the plain-text fallback.
+
+        // ── PDF generation ────────────────────────────────────────────────────
+        // Generate after a successful DB insert; never blocks the booking response.
+        // The returned $pdf_url is a signed, server-side download link — it is
+        // injected into the admin email only; the customer never sees it.
+        // Generate PDF — returns ['filepath'=>..., 'url'=>...] or false.
+        // Passed to send_admin() for attachment. Never sent to customer.
+        $pdf_result = false;
+        try {
+            $price      = (float)( $payload['price'] ?? 0.0 );
+            $pdf_result = FGBW_PDF::generate( $booking_id, $payload, $price );
+        } catch ( \Throwable $e ) {
+            error_log( '[FGBW PDF] Caught exception during generate: ' . $e->getMessage() );
+        }
+
         FGBW_Email::send_customer( $booking_id, $payload );
-        FGBW_Email::send_admin(    $booking_id, $payload );
+        FGBW_Email::send_admin(    $booking_id, $payload, $pdf_result );
 
         wp_send_json_success( [
             'booking_id' => $booking_id,
@@ -461,71 +476,54 @@ class FGBW_AJAX
 
     public function fetch_flight_details()
     {
+        // Ensure enough execution time for up to 2 API calls
+        @set_time_limit(60);
+
         $this->verify_nonce();
+        global $wpdb;
 
         $airline_iata  = sanitize_text_field($_POST['airline_iata']  ?? '');
         $flight_number = sanitize_text_field($_POST['flight_number'] ?? '');
         $flight_date   = sanitize_text_field($_POST['flight_date']   ?? '');
-        // airport_iata: the 3-letter IATA code of the pickup airport (e.g. "PHL").
-        // Required by /flightsFuture which uses the airport as its primary filter.
         $airport_iata  = strtoupper(sanitize_text_field($_POST['airport_iata'] ?? ''));
 
         if (!$airline_iata || !$flight_number) {
-            wp_send_json_error(['message' => 'Missing flight info']);
+            wp_send_json_error(['message' => 'Missing flight info.']);
         }
 
         $settings = get_option('fgbw_settings', []);
         $api_key  = $settings['aviationstack_key'] ?? '';
-
         if (!$api_key) {
             wp_send_json_error(['message' => 'Flight lookup is not configured.']);
         }
 
         $flight_code    = strtoupper($airline_iata . $flight_number);
         $has_valid_date = ($flight_date && preg_match('/^\d{4}-\d{2}-\d{2}$/', $flight_date));
-        $is_future_date = ($has_valid_date && $flight_date > date('Y-m-d'));
+        // flightsFuture endpoint ONLY works for dates MORE THAN 7 days ahead.
+        // For dates within 7 days (including today/past), use /flights endpoint.
+        $is_future_date = ($has_valid_date && $flight_date > date('Y-m-d', strtotime('+7 days')));
+        $flight         = null;
+        $date_matched   = false;
+        $debug          = ['strategy' => 'none', 'attempts' => []];
 
-        /**
-         * Helper: scan a data[] array and find the record whose departure OR
-         * arrival scheduled date (YYYY-MM-DD prefix of ISO timestamp) matches
-         * $target_date. Returns the matching record or null.
-         */
-        $find_by_date = function(array $data, string $target_date): ?array {
-            foreach ($data as $item) {
-                $dep_date = substr($item['departure']['scheduled'] ?? '', 0, 10);
-                $arr_date = substr($item['arrival']['scheduled']   ?? '', 0, 10);
-                if ($dep_date === $target_date || $arr_date === $target_date) {
-                    return $item;
-                }
-            }
-            return null;
+        // ── Helper: look up airport name from local DB ────────────────────────
+        $airport_name = function(string $iata) use ($wpdb): string {
+            if (!$iata) return '';
+            $t = $wpdb->prefix . 'fg_airports';
+            $n = $wpdb->get_var($wpdb->prepare("SELECT airport_name FROM {$t} WHERE iata_code = %s LIMIT 1", $iata));
+            return $n ? sanitize_text_field($n) : $iata;
         };
 
-        /**
-         * Normalise a /flightsFuture record into the same structure as /flights.
-         *
-         * /flightsFuture differs significantly:
-         *  - All strings are lowercase (codes, names, terminals, gates)
-         *  - departure.iataCode / arrival.iataCode  (not .iata)
-         *  - scheduledTime = "HH:MM" only — no date, no timezone
-         *  - No airport name field (only IATA/ICAO codes)
-         *  - airline.iataCode, flight.iataNumber (not .iata)
-         *  - No flight_status (these are always scheduled future flights)
-         */
-        $normalise_future = function(array $item) use ($flight_date): array {
+        // ── Helper: normalise /flightsFuture record → /flights structure ──────
+        $normalise_future = function(array $item) use ($flight_date, $airport_name): array {
             $dep = $item['departure'] ?? [];
             $arr = $item['arrival']   ?? [];
             $aln = $item['airline']   ?? [];
             $flt = $item['flight']    ?? [];
-
-            // Build full ISO datetime strings from date + scheduledTime ("HH:MM")
-            $dep_time_str = isset($dep['scheduledTime'])
-                ? $flight_date . 'T' . $dep['scheduledTime'] . ':00+00:00'
-                : '';
-            $arr_time_str = isset($arr['scheduledTime'])
-                ? $flight_date . 'T' . $arr['scheduledTime'] . ':00+00:00'
-                : '';
-
+            $dep_iso = $flight_date . 'T' . ($dep['scheduledTime'] ?? '00:00') . ':00+00:00';
+            $arr_iso = $flight_date . 'T' . ($arr['scheduledTime'] ?? '00:00') . ':00+00:00';
+            $dep_iata = strtoupper($dep['iataCode'] ?? '');
+            $arr_iata = strtoupper($arr['iataCode'] ?? '');
             return [
                 'flight_status' => 'scheduled',
                 'airline' => [
@@ -536,204 +534,298 @@ class FGBW_AJAX
                     'iata' => strtoupper($flt['iataNumber'] ?? $flt['number'] ?? ''),
                 ],
                 'departure' => [
-                    'airport'   => strtoupper($dep['iataCode'] ?? ''), // no name available
-                    'iata'      => strtoupper($dep['iataCode'] ?? ''),
+                    'airport'   => $airport_name($dep_iata),
+                    'iata'      => $dep_iata,
                     'terminal'  => strtoupper($dep['terminal'] ?? ''),
                     'gate'      => strtoupper($dep['gate']     ?? ''),
-                    'scheduled' => $dep_time_str,
-                    'estimated' => $dep_time_str,
+                    'scheduled' => $dep_iso,
+                    'estimated' => $dep_iso,
                     'actual'    => null,
                 ],
                 'arrival' => [
-                    'airport'   => strtoupper($arr['iataCode'] ?? ''), // no name available
-                    'iata'      => strtoupper($arr['iataCode'] ?? ''),
+                    'airport'   => $airport_name($arr_iata),
+                    'iata'      => $arr_iata,
                     'terminal'  => strtoupper($arr['terminal'] ?? ''),
                     'gate'      => strtoupper($arr['gate']     ?? ''),
-                    'scheduled' => $arr_time_str,
-                    'estimated' => $arr_time_str,
+                    'scheduled' => $arr_iso,
+                    'estimated' => $arr_iso,
                     'actual'    => null,
                 ],
             ];
         };
 
-        $flight       = null;
-        $date_matched = false;
+        // ── Helper: find best matching leg from /flightsFuture data[] ─────────
+        $find_future_leg = function(array $data) use ($flight_code, $airport_iata, $normalise_future): ?array {
+            $legs = [];
+            foreach ($data as $item) {
+                $code = strtoupper($item['flight']['iataNumber'] ?? $item['flight']['iata'] ?? '');
+                if ($code === $flight_code) $legs[] = $item;
+            }
+            if (empty($legs)) return null;
+            // Filter to legs arriving at user's airport
+            $arr_legs = array_filter($legs, fn($l) => strtoupper($l['arrival']['iataCode'] ?? '') === $airport_iata);
+            $candidates = !empty($arr_legs) ? array_values($arr_legs) : $legs;
+            // Sort by earliest departure time — always pick the first scheduled flight
+            usort($candidates, fn($a, $b) => strcmp(
+                $a['departure']['scheduledTime'] ?? '00:00',
+                $b['departure']['scheduledTime'] ?? '00:00'
+            ));
+            return $normalise_future($candidates[0]);
+        };
 
-        // ── Strategy A: FUTURE date → /flightsFuture endpoint ──────────────
-        // /flightsFuture requires:
-        //   iataCode = 3-letter AIRPORT code (e.g. "PHL") — NOT the flight number
-        //   type     = arrival (user's airport is their pickup point — flight arrives there)
-        //   date     = YYYY-MM-DD
-        // We then filter the returned list to find our specific flight number.
+        // ── Helper: make one API GET call with 15s timeout ──────────────────
+        // Debug logger — only writes when WP_DEBUG is enabled
+        $log = function(string $msg) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[FGBW] ' . $msg);
+            }
+        };
+
+        $api_get = function(string $url) use (&$debug, $log): ?array {
+            $debug['attempts'][] = preg_replace('/access_key=[^&]+/', 'access_key=***', $url);
+            $resp = wp_remote_get($url, ['timeout' => 10]);
+            if (is_wp_error($resp)) {
+                $log('WP_Error: ' . $resp->get_error_message());
+                return null;
+            }
+            $body = json_decode(wp_remote_retrieve_body($resp), true);
+            return is_array($body) ? $body : null;
+        };
+
+        // ════════════════════════════════════════════════════════════════════
+        // STRATEGY A — Future date: /flightsFuture with date-range search
+        // ════════════════════════════════════════════════════════════════════
+        // Flights don't operate every day (weekday schedules). If the exact date
+        // has no matching flight, try the day before and day after to find the
+        // One clean call: flightsFuture filtered by airline + airport + exact date.
+        // NO date-range loop — extra calls cause nginx 60s timeout on busy airports.
+        // Maximum: 1 call for Strategy A. Falls through to Strategy B if not found.
+        $nearest_date = '';
+
         if ($has_valid_date && $is_future_date && $airport_iata) {
-            // Use 'arrival' because the user's airport is where the flight arrives
-            // (they're getting picked up FROM the airport after landing)
-            foreach (['arrival', 'departure'] as $fut_type) {
-                if ($date_matched) break;
-                $fut_url = 'http://api.aviationstack.com/v1/flightsFuture?' . http_build_query([
-                    'access_key' => $api_key,
-                    'iataCode'   => $airport_iata,  // 3-letter airport code e.g. "PHL"
-                    'type'       => $fut_type,
-                    'date'       => $flight_date,
-                ]);
-                $resp_fut = wp_remote_get($fut_url, ['timeout' => 15]);
-                $raw_key  = ($fut_type === 'arrival') ? 'raw_fut_dep' : 'raw_fut_arr';
-                if (is_wp_error($resp_fut)) {
-                    $$raw_key = 'wp_error: ' . $resp_fut->get_error_message();
-                    continue;
+            $debug['strategy'] = 'A_future';
+            $body_a = $api_get('http://api.aviationstack.com/v1/flightsFuture?' . http_build_query([
+                'access_key'   => $api_key,
+                'iataCode'     => $airport_iata,
+                'type'         => 'arrival',
+                'date'         => $flight_date,
+                'airline_iata' => $airline_iata,
+            ]));
+            if (!empty($body_a['data'])) {
+$legs = [];
+                foreach ($body_a['data'] as $item) {
+                    $flt = $item['flight'] ?? [];
+                    // Try all possible field names flightsFuture may use:
+                    // iataNumber (e.g. "ua2019"), iata (e.g. "UA2019"),
+                    // number (e.g. "2019") — prefix with airline_iata for comparison
+                    $code_full   = strtoupper($flt['iataNumber'] ?? $flt['iata'] ?? '');
+                    $code_number = strtoupper($airline_iata . ($flt['number'] ?? ''));
+                    if ($code_full === $flight_code || $code_number === $flight_code) {
+                        $legs[] = $item;
+                    }
                 }
-                $$raw_key = wp_remote_retrieve_body($resp_fut);
-                $body_fut = json_decode($$raw_key, true);
-                if (!empty($body_fut['data'])) {
-                    // Find the specific flight by matching the flight number
-                    $fut_flight = null;
-                    foreach ($body_fut['data'] as $item) {
-                        $item_flight = strtoupper(
-                            $item['flight']['iataNumber'] ?? $item['flight']['iata'] ?? ''
-                        );
-                        if ($item_flight === $flight_code) {
-                            $fut_flight = $item;
-                            break;
-                        }
-                    }
-                    if ($fut_flight) {
-                        $flight       = $normalise_future($fut_flight);
-                        $date_matched = true;
-                    }
-                    // else: airport matched but flight not in list, try other type
+                if (!empty($legs)) {
+                    $arr_legs   = array_filter($legs, fn($l) => strtoupper($l['arrival']['iataCode'] ?? '') === $airport_iata);
+                    $candidates = !empty($arr_legs) ? array_values($arr_legs) : $legs;
+                    usort($candidates, fn($a, $b) => strcmp(
+                        $a['departure']['scheduledTime'] ?? '00:00',
+                        $b['departure']['scheduledTime'] ?? '00:00'
+                    ));
+                    $best = $candidates[0];
+                    $dep  = $best['departure'] ?? [];
+                    $arr  = $best['arrival']   ?? [];
+                    $aln  = $best['airline']   ?? [];
+                    $flt  = $best['flight']    ?? [];
+                    $di   = strtoupper($dep['iataCode'] ?? '');
+                    $ai   = strtoupper($arr['iataCode'] ?? '');
+                    $flight = [
+                        'flight_status' => 'scheduled',
+                        'airline'   => ['name' => ucwords(strtolower($aln['name'] ?? '')), 'iata' => strtoupper($aln['iataCode'] ?? '')],
+                        'flight'    => ['iata' => strtoupper($flt['iataNumber'] ?? $flt['number'] ?? '')],
+                        'departure' => ['airport'=>$airport_name($di),'iata'=>$di,'terminal'=>strtoupper($dep['terminal']??''),'gate'=>strtoupper($dep['gate']??''),'scheduled'=>$flight_date.'T'.($dep['scheduledTime']??'00:00').':00+00:00','estimated'=>$flight_date.'T'.($dep['scheduledTime']??'00:00').':00+00:00','actual'=>null],
+                        'arrival'   => ['airport'=>$airport_name($ai),'iata'=>$ai,'terminal'=>strtoupper($arr['terminal']??''),'gate'=>strtoupper($arr['gate']??''),'scheduled'=>$flight_date.'T'.($arr['scheduledTime']??'00:00').':00+00:00','estimated'=>$flight_date.'T'.($arr['scheduledTime']??'00:00').':00+00:00','actual'=>null],
+                    ];
+                    $date_matched = true;
+                    $nearest_date = $flight_date;
                 }
             }
         }
-        // Initialise raw debug vars if Strategy A was skipped
-        if (!isset($raw_fut_dep)) $raw_fut_dep = $airport_iata ? 'no_airport_iata_sent' : 'skipped_not_future';
-        if (!isset($raw_fut_arr)) $raw_fut_arr = 'skipped';
 
-        // ── Strategy B: /flights with flight_date — runs for today/past, OR
-        // if Strategy A failed (flightsFuture unavailable on this plan).
+        // ════════════════════════════════════════════════════════════════════
+        // STRATEGY B — Today/past date OR future fallback: /flights?flight_date
+        // ════════════════════════════════════════════════════════════════════
         if (!$date_matched && $has_valid_date) {
-            // Attempt B1: exact date
-            $b1_url  = 'http://api.aviationstack.com/v1/flights?' . http_build_query([
+            $debug['strategy'] = $debug['strategy'] === 'none' ? 'B_dated' : 'B_fallback';
+            // Add arr_iata to get ONLY the leg arriving at the user's airport.
+            // Without this, AA2961 returns multiple legs (MCO→PHL AND PHL→XXX).
+            // With arr_iata=PHL: API returns exactly the MCO→PHL leg — no ambiguity.
+            // Use only flight_iata + flight_date — arr_iata is not reliably
+            // supported across all Aviationstack plan levels and can cause errors.
+            // We filter by airport client-side below.
+            $body_b = $api_get('http://api.aviationstack.com/v1/flights?' . http_build_query([
                 'access_key'  => $api_key,
                 'flight_iata' => $flight_code,
                 'flight_date' => $flight_date,
                 'limit'       => 10,
-            ]);
-            $resp_b1 = wp_remote_get($b1_url, ['timeout' => 15]);
-            if (!is_wp_error($resp_b1)) {
-                $raw_b1  = wp_remote_retrieve_body($resp_b1);
-                $body_b1 = json_decode($raw_b1, true);
-                error_log('[FGBW] /flights B1 response for ' . $flight_code . ' ' . $flight_date . ': ' . substr($raw_b1, 0, 500));
-                if (!empty($body_b1['data'])) {
-                    $m = $find_by_date($body_b1['data'], $flight_date);
-                    $flight       = $m ?? $body_b1['data'][0];
-                    $date_matched = !!$m;
+            ]));
+            if (!empty($body_b['data'])) {
+                // Filter to records matching the requested date
+                $dated = array_filter($body_b['data'], function($item) use ($flight_date) {
+                    $dd = substr($item['departure']['scheduled'] ?? '', 0, 10);
+                    $ad = substr($item['arrival']['scheduled']   ?? '', 0, 10);
+                    return $dd === $flight_date || $ad === $flight_date;
+                });
+                if (!empty($dated)) {
+                    // Among date-matched records, prefer arrival at user airport, then earliest
+                    $dated = array_values($dated);
+                    $at_airport = array_filter($dated, function($item) use ($airport_iata) {
+                        return strtoupper($item['arrival']['iata'] ?? '') === $airport_iata;
+                    });
+                    $candidates = !empty($at_airport) ? array_values($at_airport) : $dated;
+                    usort($candidates, fn($a, $b) => strcmp(
+                        $a['departure']['scheduled'] ?? '',
+                        $b['departure']['scheduled'] ?? ''
+                    ));
+                    $flight = $candidates[0];
+                    $date_matched = true;
+                } else {
+                    $flight = $body_b['data'][0];
                 }
             }
-            // Attempt B2: day-before (red-eye / overnight departures)
-            if (!$date_matched) {
-                $day_before  = date('Y-m-d', strtotime($flight_date . ' -1 day'));
-                $resp_b2 = wp_remote_get(
-                    'http://api.aviationstack.com/v1/flights?' . http_build_query([
-                        'access_key'  => $api_key,
-                        'flight_iata' => $flight_code,
-                        'flight_date' => $day_before,
-                        'limit'       => 10,
-                    ]),
-                    ['timeout' => 15]
-                );
-                if (!is_wp_error($resp_b2)) {
-                    $body_b2 = json_decode(wp_remote_retrieve_body($resp_b2), true);
-                    if (!empty($body_b2['data'])) {
-                        $m2 = $find_by_date($body_b2['data'], $flight_date);
-                        if ($m2) { $flight = $m2; $date_matched = true; }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // STRATEGY C — Paginated broad search: scans up to 200 /flights records
+        // ════════════════════════════════════════════════════════════════════
+        // /flights holds real-time + near-future scheduled records, sorted by
+        // date ascending. UA2019 has 192 records total — the requested future
+        // date may be in the second page (offset=100). We scan page 1 first;
+        // if the date is not found AND there are more records, fetch page 2.
+        if (!$flight) {
+            $debug['strategy'] = 'C_nodatE';
+
+            $scan_records = function(array $data) use ($flight_date, $airport_iata, $has_valid_date): ?array {
+                // Priority 1: date + airport match
+                foreach ($data as $item) {
+                    $dep_d = substr($item['departure']['scheduled'] ?? '', 0, 10);
+                    $arr_d = substr($item['arrival']['scheduled']   ?? '', 0, 10);
+                    $arr_i = strtoupper($item['arrival']['iata']    ?? '');
+                    if (($dep_d === $flight_date || $arr_d === $flight_date)
+                        && (!$airport_iata || $arr_i === $airport_iata)) {
+                        return $item;
+                    }
+                }
+                // Priority 2: date only
+                if ($has_valid_date) {
+                    foreach ($data as $item) {
+                        $dep_d = substr($item['departure']['scheduled'] ?? '', 0, 10);
+                        $arr_d = substr($item['arrival']['scheduled']   ?? '', 0, 10);
+                        if ($dep_d === $flight_date || $arr_d === $flight_date) {
+                            return $item;
+                        }
+                    }
+                }
+                return null;
+            };
+
+            // Page 1 — first 100 records
+            $body_c1 = $api_get('http://api.aviationstack.com/v1/flights?' . http_build_query([
+                'access_key'  => $api_key,
+                'flight_iata' => $flight_code,
+                'limit'       => 100,
+                'offset'      => 0,
+            ]));
+            $total_available = $body_c1['pagination']['total'] ?? 0;
+            $log('Strategy C page1: ' . count($body_c1['data'] ?? []) . ' records of ' . $total_available . ', scanning for date=' . $flight_date);
+
+            $found = null;
+            if (!empty($body_c1['data'])) {
+                $found = $scan_records($body_c1['data']);
+            }
+
+            // Page 2 — records 101-200, only if page 1 had no date match and more exist
+            if (!$found && $total_available > 100) {
+                $body_c2 = $api_get('http://api.aviationstack.com/v1/flights?' . http_build_query([
+                    'access_key'  => $api_key,
+                    'flight_iata' => $flight_code,
+                    'limit'       => 100,
+                    'offset'      => 100,
+                ]));
+                if (!empty($body_c2['data'])) {
+                    $found = $scan_records($body_c2['data']);
+                    // Merge for fallback selection below
+                    if (!empty($body_c1['data'])) {
+                        $all_c = array_merge($body_c1['data'], $body_c2['data']);
+                    } else {
+                        $all_c = $body_c2['data'];
                     }
                 }
             }
-        }
+            $all_c = $all_c ?? ($body_c1['data'] ?? []);
 
-        // ── Strategy C: no-date fallback — works on any plan ─────────────────
-        // Used when: no date given, or all date-specific attempts returned nothing.
-        if (!$flight) {
-            $resp_c = wp_remote_get(
-                'http://api.aviationstack.com/v1/flights?' . http_build_query([
-                    'access_key'  => $api_key,
-                    'flight_iata' => $flight_code,
-                    'limit'       => 10,
-                ]),
-                ['timeout' => 15]
-            );
-            if (is_wp_error($resp_c)) {
-                wp_send_json_error(['message' => 'Unable to reach the flight data service. Please try again.']);
+            if ($found) {
+                $flight = $found;
+            } elseif ($airport_iata && !empty($all_c)) {
+                // Fallback: best airport match
+                foreach ($all_c as $item) {
+                    if (strtoupper($item['arrival']['iata'] ?? '') === $airport_iata) {
+                        $flight = $item; break;
+                    }
+                }
             }
-            $raw_c  = wp_remote_retrieve_body($resp_c);
-            $body_c = json_decode($raw_c, true);
-            if (!empty($body_c['data'])) {
-                if ($has_valid_date) {
-                    $m3           = $find_by_date($body_c['data'], $flight_date);
-                    $flight       = $m3 ?? $body_c['data'][0];
-                    $date_matched = !!$m3;
-                } else {
-                    $flight = $body_c['data'][0];
+            if (!$flight && !empty($all_c)) {
+                $flight = $all_c[0];
+            }
+
+            // Set date_matched if the final result is for the requested date
+            if ($flight && $has_valid_date) {
+                $dep_d = substr($flight['departure']['scheduled'] ?? '', 0, 10);
+                $arr_d = substr($flight['arrival']['scheduled']   ?? '', 0, 10);
+                if ($dep_d === $flight_date || $arr_d === $flight_date) {
+                    $date_matched = true;
                 }
             }
         }
 
         if (!$flight) {
-            error_log('[FGBW] Flight lookup failed — ' . $flight_code
-                . ($has_valid_date ? ' date=' . $flight_date : '') );
             wp_send_json_error(['message' => 'Flight not found. Please check the airline and flight number.']);
         }
 
-        // Prefer estimated times over scheduled when available
+        // ── Build response fields ─────────────────────────────────────────────
         $dep = $flight['departure'] ?? [];
         $arr = $flight['arrival']   ?? [];
 
         $dep_time = $dep['estimated'] ?? $dep['actual'] ?? $dep['scheduled'] ?? '';
         $arr_time = $arr['estimated'] ?? $arr['actual'] ?? $arr['scheduled'] ?? '';
 
-        // Status labels: use "estimated" label when actual times differ from schedule
-        $dep_status = !empty($dep['actual'])    ? 'ACTUAL'
-                    : (!empty($dep['estimated']) ? 'ESTIMATED'
-                    : 'SCHEDULED');
-        $arr_status = !empty($arr['actual'])    ? 'ACTUAL'
-                    : (!empty($arr['estimated']) ? 'ESTIMATED'
-                    : 'SCHEDULED');
+        // For future/scheduled flights both estimated and scheduled are the same ISO string —
+        // status should show SCHEDULED not ESTIMATED in that case
+        $dep_status = !empty($dep['actual'])
+            ? 'ACTUAL'
+            : (!empty($dep['estimated']) && $dep['estimated'] !== ($dep['scheduled'] ?? '')
+                ? 'ESTIMATED'
+                : 'SCHEDULED');
+        $arr_status = !empty($arr['actual'])
+            ? 'ACTUAL'
+            : (!empty($arr['estimated']) && $arr['estimated'] !== ($arr['scheduled'] ?? '')
+                ? 'ESTIMATED'
+                : 'SCHEDULED');
 
-        // last_updated — format as "Today at H:i A" when same day, else date string
-        $updated_raw = $flight['updated'] ?? ($flight['last_updated'] ?? '');
+        $updated_raw  = $flight['updated'] ?? ($flight['last_updated'] ?? '');
         $last_updated = '';
         if ($updated_raw) {
-            $ts       = strtotime($updated_raw);
-            $today    = date('Y-m-d');
-            $upd_date = date('Y-m-d', $ts);
-            $last_updated = ($upd_date === $today)
+            $ts = strtotime($updated_raw);
+            $last_updated = (date('Y-m-d', $ts) === date('Y-m-d'))
                 ? 'Today at ' . date('g:i A', $ts)
                 : date('M j, Y g:i A', $ts);
         }
 
-        // The card shows the status-label time (estimated/actual/scheduled)
-        // as the bold large time, matching the reference site behaviour.
-        $debug_info = [
-            'requested_date' => $flight_date,
-            'is_future'      => $is_future_date,
-            'date_matched'   => $date_matched,
-            'dep_scheduled'  => $dep['scheduled']  ?? '',
-            'arr_scheduled'  => $arr['scheduled']  ?? '',
-            'fut_dep_raw'    => isset($raw_fut_dep) ? substr($raw_fut_dep, 0, 600) : 'not_tried',
-            'fut_arr_raw'    => isset($raw_fut_arr) ? substr($raw_fut_arr, 0, 600) : 'not_tried',
-            'b1_raw'         => isset($raw_b1)      ? substr($raw_b1,      0, 600) : 'not_tried',
-            'c_raw'          => isset($raw_c)       ? substr($raw_c,       0, 600) : 'not_tried',
-        ];
-        // Write directly to wp-content/debug.log bypassing error_log routing
-        @file_put_contents(
-            WP_CONTENT_DIR . '/debug.log',
-            '[' . date('Y-m-d H:i:s') . '] [FGBW] ' . json_encode($debug_info) . PHP_EOL,
-            FILE_APPEND | LOCK_EX
-        );
+        $log('strategy=' . $debug['strategy'] . ' date_matched=' . ($date_matched ? 'true' : 'false')
+            . ' flight=' . $flight_code . ' date=' . $flight_date . ' calls=' . count($debug['attempts']));
 
         wp_send_json_success([
             'date_matched'           => $date_matched,
-            '_debug'                 => $debug_info,
+            'nearest_date'           => $nearest_date ?? '',
             'airline'                => $flight['airline']['name']  ?? '',
             'flight_iata'            => $flight['flight']['iata']   ?? $flight_code,
             'status'                 => $flight['flight_status']    ?? '',

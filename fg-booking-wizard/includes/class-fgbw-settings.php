@@ -84,9 +84,10 @@ jQuery(function($){
         $out['email_customer_subject'] = sanitize_text_field($input['email_customer_subject'] ?? 'Your Reservation Was Successfully Submitted!');
         $out['email_admin_subject']    = sanitize_text_field($input['email_admin_subject'] ?? 'New Reservation Submitted - {name}');
 
-        // Preserve legacy body keys if they exist (so old stored values are not deleted on save)
-        $out['email_customer_body'] = $input['email_customer_body'] ?? (get_option('fgbw_settings')['email_customer_body'] ?? '');
-        $out['email_admin_body']    = $input['email_admin_body']    ?? (get_option('fgbw_settings')['email_admin_body']    ?? '');
+        // Intentionally NOT preserving email_customer_body / email_admin_body.
+        // Email bodies are rendered from on-disk template files only.
+        // Any old stored values are ignored by resolve_template() which checks for
+        // proper HTML structure before using a saved value.
 
         return $out;
     }
