@@ -278,7 +278,7 @@
                 <span>I do not have my flight information</span>
               </label>
 
-              <button type="button" class="fgbw__btn fgbw__btn--ghost fgbw__airport-confirm" disabled>
+              <button type="button" class="fgbw__btn fgbw__btn--ghost fgbw__airport-confirm" style="display:none;" disabled>
                 Confirm
               </button>
 
@@ -339,6 +339,9 @@
       });
 
       this.$confirm.on("click", async () => {
+        // Disabled flight tracking functionality temporarily
+        return;
+
         // If checkbox checked => bypass confirm
         if (this.state.noFlightInfo) return;
 
@@ -349,10 +352,10 @@
           const dtInput = document.querySelector(
             `[data-datetime-for="${this.tripSegment}"]`
           );
-          const rawDt      = dtInput ? dtInput.value.trim() : "";
+          const rawDt = dtInput ? dtInput.value.trim() : "";
           // FIX #2 (second instance): Use reliable split on T/space instead of regex.
           // datetime-local inputs always store "YYYY-MM-DDTHH:MM"; some polyfills use a space.
-          const flightDate  = rawDt ? rawDt.split("T")[0].split(" ")[0] : "";
+          const flightDate = rawDt ? rawDt.split("T")[0].split(" ")[0] : "";
           const dateIsValid = /^\d{4}-\d{2}-\d{2}$/.test(flightDate);
 
           if (!dateIsValid) {
@@ -377,10 +380,10 @@
           try {
             this.setLoading(true);
             const res = await wpAjax("fgbw_fetch_flight", {
-              airline_iata:  this.state.airline.iata_code,
+              airline_iata: this.state.airline.iata_code,
               flight_number: this.state.flight,
-              flight_date:   flightDate,
-              airport_iata:  this.state.airport ? this.state.airport.iata_code : "",
+              flight_date: flightDate,
+              airport_iata: this.state.airport ? this.state.airport.iata_code : "",
             });
 
             if (res && res.success && res.data) {
@@ -470,9 +473,9 @@
       }
 
       // Confirm requires: airport selected + airline + flight number + date filled
-      const dtInput   = document.querySelector(`[data-datetime-for="${this.tripSegment}"]`);
-      const rawDt     = dtInput ? dtInput.value.trim() : "";
-      const hasDate   = /(\d{4}-\d{2}-\d{2})/.test(rawDt);
+      const dtInput = document.querySelector(`[data-datetime-for="${this.tripSegment}"]`);
+      const rawDt = dtInput ? dtInput.value.trim() : "";
+      const hasDate = /(\d{4}-\d{2}-\d{2})/.test(rawDt);
       const ok = !!this.state.airport && !!this.state.airline && !!this.state.flight && hasDate;
       this.$confirm.prop("disabled", !ok).toggleClass("is-disabled", !ok);
 
@@ -480,12 +483,14 @@
       // IMPORTANT: only touch the result area for hint messages — never clear
       // flight cards or error messages that were set by the confirm handler.
       const $result = this.$root.find(".fgbw-flight-result");
-      const hasHint  = $result.find(".fgbw-flight-hint").length > 0;
-      const hasCard  = $result.find(".fgbw-flight-card").length > 0;
+      const hasHint = $result.find(".fgbw-flight-hint").length > 0;
+      const hasCard = $result.find(".fgbw-flight-card").length > 0;
       const hasError = $result.find(".fgbw__error").length > 0;
 
       if (!hasDate && this.state.airport && this.state.airline && this.state.flight) {
+        // Flight tracking disabled temporarily
         // Only show hint if no card/error is already displayed
+        /*
         if (!hasCard && !hasError) {
           $result.html(
             `<div class="fgbw-flight-hint">
@@ -493,6 +498,7 @@
             </div>`
           );
         }
+        */
       } else if (hasHint) {
         // Only clear if it's a hint — never wipe cards or errors
         $result.empty();
@@ -612,7 +618,7 @@
         (async () => {
           try {
             const geocoder = new google.maps.Geocoder();
-            const latlng  = { lat, lng };
+            const latlng = { lat, lng };
 
             // Geocoder call A: targeted postal_code result type
             const callA = new Promise((resolve) => {
@@ -829,10 +835,10 @@
         ? `<div class="fgbw-flight-card__updated"><span>Last Updated:</span> ${data.last_updated}</div>`
         : "";
 
-      const depTerm  = data.departure_terminal || "–";
-      const depGate  = data.departure_gate      || "–";
-      const arrTerm  = data.arrival_terminal    || "–";
-      const arrGate  = data.arrival_gate        || "–";
+      const depTerm = data.departure_terminal || "–";
+      const depGate = data.departure_gate || "–";
+      const arrTerm = data.arrival_terminal || "–";
+      const arrGate = data.arrival_gate || "–";
 
       // Warn when API could not find a flight matching the selected date
       const dateWarn = (data.date_matched === false)
@@ -1220,203 +1226,203 @@
      * ───────────────────────────────────────────────────────────────────────── */
     initPhonePicker() {
       const COUNTRIES = [
-        { flag:"🇦🇫", name:"Afghanistan",                    code:"+93"  },
-        { flag:"🇦🇱", name:"Albania",                        code:"+355" },
-        { flag:"🇩🇿", name:"Algeria",                        code:"+213" },
-        { flag:"🇦🇩", name:"Andorra",                        code:"+376" },
-        { flag:"🇦🇴", name:"Angola",                         code:"+244" },
-        { flag:"🇦🇬", name:"Antigua & Barbuda",              code:"+1268"},
-        { flag:"🇦🇷", name:"Argentina",                      code:"+54"  },
-        { flag:"🇦🇲", name:"Armenia",                        code:"+374" },
-        { flag:"🇦🇺", name:"Australia",                      code:"+61"  },
-        { flag:"🇦🇹", name:"Austria",                        code:"+43"  },
-        { flag:"🇦🇿", name:"Azerbaijan",                     code:"+994" },
-        { flag:"🇧🇸", name:"Bahamas",                        code:"+1242"},
-        { flag:"🇧🇭", name:"Bahrain",                        code:"+973" },
-        { flag:"🇧🇩", name:"Bangladesh",                     code:"+880" },
-        { flag:"🇧🇧", name:"Barbados",                       code:"+1246"},
-        { flag:"🇧🇾", name:"Belarus",                        code:"+375" },
-        { flag:"🇧🇪", name:"Belgium",                        code:"+32"  },
-        { flag:"🇧🇿", name:"Belize",                         code:"+501" },
-        { flag:"🇧🇯", name:"Benin",                          code:"+229" },
-        { flag:"🇧🇹", name:"Bhutan",                         code:"+975" },
-        { flag:"🇧🇴", name:"Bolivia",                        code:"+591" },
-        { flag:"🇧🇦", name:"Bosnia & Herzegovina",           code:"+387" },
-        { flag:"🇧🇼", name:"Botswana",                       code:"+267" },
-        { flag:"🇧🇷", name:"Brazil",                         code:"+55"  },
-        { flag:"🇧🇳", name:"Brunei",                         code:"+673" },
-        { flag:"🇧🇬", name:"Bulgaria",                       code:"+359" },
-        { flag:"🇧🇫", name:"Burkina Faso",                   code:"+226" },
-        { flag:"🇧🇮", name:"Burundi",                        code:"+257" },
-        { flag:"🇨🇻", name:"Cabo Verde",                     code:"+238" },
-        { flag:"🇰🇭", name:"Cambodia",                       code:"+855" },
-        { flag:"🇨🇲", name:"Cameroon",                       code:"+237" },
-        { flag:"🇨🇦", name:"Canada",                         code:"+1"   },
-        { flag:"🇨🇫", name:"Central African Republic",       code:"+236" },
-        { flag:"🇹🇩", name:"Chad",                           code:"+235" },
-        { flag:"🇨🇱", name:"Chile",                          code:"+56"  },
-        { flag:"🇨🇳", name:"China",                          code:"+86"  },
-        { flag:"🇨🇴", name:"Colombia",                       code:"+57"  },
-        { flag:"🇰🇲", name:"Comoros",                        code:"+269" },
-        { flag:"🇨🇬", name:"Congo",                          code:"+242" },
-        { flag:"🇨🇩", name:"Congo (DRC)",                    code:"+243" },
-        { flag:"🇨🇷", name:"Costa Rica",                     code:"+506" },
-        { flag:"🇭🇷", name:"Croatia",                        code:"+385" },
-        { flag:"🇨🇺", name:"Cuba",                           code:"+53"  },
-        { flag:"🇨🇾", name:"Cyprus",                         code:"+357" },
-        { flag:"🇨🇿", name:"Czech Republic",                 code:"+420" },
-        { flag:"🇩🇰", name:"Denmark",                        code:"+45"  },
-        { flag:"🇩🇯", name:"Djibouti",                       code:"+253" },
-        { flag:"🇩🇴", name:"Dominican Republic",             code:"+1809"},
-        { flag:"🇪🇨", name:"Ecuador",                        code:"+593" },
-        { flag:"🇪🇬", name:"Egypt",                          code:"+20"  },
-        { flag:"🇸🇻", name:"El Salvador",                    code:"+503" },
-        { flag:"🇬🇶", name:"Equatorial Guinea",              code:"+240" },
-        { flag:"🇪🇷", name:"Eritrea",                        code:"+291" },
-        { flag:"🇪🇪", name:"Estonia",                        code:"+372" },
-        { flag:"🇸🇿", name:"Eswatini",                       code:"+268" },
-        { flag:"🇪🇹", name:"Ethiopia",                       code:"+251" },
-        { flag:"🇫🇯", name:"Fiji",                           code:"+679" },
-        { flag:"🇫🇮", name:"Finland",                        code:"+358" },
-        { flag:"🇫🇷", name:"France",                         code:"+33"  },
-        { flag:"🇬🇦", name:"Gabon",                          code:"+241" },
-        { flag:"🇬🇲", name:"Gambia",                         code:"+220" },
-        { flag:"🇬🇪", name:"Georgia",                        code:"+995" },
-        { flag:"🇩🇪", name:"Germany",                        code:"+49"  },
-        { flag:"🇬🇭", name:"Ghana",                          code:"+233" },
-        { flag:"🇬🇷", name:"Greece",                         code:"+30"  },
-        { flag:"🇬🇩", name:"Grenada",                        code:"+1473"},
-        { flag:"🇬🇹", name:"Guatemala",                      code:"+502" },
-        { flag:"🇬🇳", name:"Guinea",                         code:"+224" },
-        { flag:"🇬🇼", name:"Guinea-Bissau",                  code:"+245" },
-        { flag:"🇬🇾", name:"Guyana",                         code:"+592" },
-        { flag:"🇭🇹", name:"Haiti",                          code:"+509" },
-        { flag:"🇭🇳", name:"Honduras",                       code:"+504" },
-        { flag:"🇭🇺", name:"Hungary",                        code:"+36"  },
-        { flag:"🇮🇸", name:"Iceland",                        code:"+354" },
-        { flag:"🇮🇳", name:"India",                          code:"+91"  },
-        { flag:"🇮🇩", name:"Indonesia",                      code:"+62"  },
-        { flag:"🇮🇷", name:"Iran",                           code:"+98"  },
-        { flag:"🇮🇶", name:"Iraq",                           code:"+964" },
-        { flag:"🇮🇪", name:"Ireland",                        code:"+353" },
-        { flag:"🇮🇱", name:"Israel",                         code:"+972" },
-        { flag:"🇮🇹", name:"Italy",                          code:"+39"  },
-        { flag:"🇯🇲", name:"Jamaica",                        code:"+1876"},
-        { flag:"🇯🇵", name:"Japan",                          code:"+81"  },
-        { flag:"🇯🇴", name:"Jordan",                         code:"+962" },
-        { flag:"🇰🇿", name:"Kazakhstan",                     code:"+7"   },
-        { flag:"🇰🇪", name:"Kenya",                          code:"+254" },
-        { flag:"🇰🇮", name:"Kiribati",                       code:"+686" },
-        { flag:"🇽🇰", name:"Kosovo",                         code:"+383" },
-        { flag:"🇰🇼", name:"Kuwait",                         code:"+965" },
-        { flag:"🇰🇬", name:"Kyrgyzstan",                     code:"+996" },
-        { flag:"🇱🇦", name:"Laos",                           code:"+856" },
-        { flag:"🇱🇻", name:"Latvia",                         code:"+371" },
-        { flag:"🇱🇧", name:"Lebanon",                        code:"+961" },
-        { flag:"🇱🇸", name:"Lesotho",                        code:"+266" },
-        { flag:"🇱🇷", name:"Liberia",                        code:"+231" },
-        { flag:"🇱🇾", name:"Libya",                          code:"+218" },
-        { flag:"🇱🇮", name:"Liechtenstein",                  code:"+423" },
-        { flag:"🇱🇹", name:"Lithuania",                      code:"+370" },
-        { flag:"🇱🇺", name:"Luxembourg",                     code:"+352" },
-        { flag:"🇲🇬", name:"Madagascar",                     code:"+261" },
-        { flag:"🇲🇼", name:"Malawi",                         code:"+265" },
-        { flag:"🇲🇾", name:"Malaysia",                       code:"+60"  },
-        { flag:"🇲🇻", name:"Maldives",                       code:"+960" },
-        { flag:"🇲🇱", name:"Mali",                           code:"+223" },
-        { flag:"🇲🇹", name:"Malta",                          code:"+356" },
-        { flag:"🇲🇷", name:"Mauritania",                     code:"+222" },
-        { flag:"🇲🇺", name:"Mauritius",                      code:"+230" },
-        { flag:"🇲🇽", name:"Mexico",                         code:"+52"  },
-        { flag:"🇫🇲", name:"Micronesia",                     code:"+691" },
-        { flag:"🇲🇩", name:"Moldova",                        code:"+373" },
-        { flag:"🇲🇨", name:"Monaco",                         code:"+377" },
-        { flag:"🇲🇳", name:"Mongolia",                       code:"+976" },
-        { flag:"🇲🇪", name:"Montenegro",                     code:"+382" },
-        { flag:"🇲🇦", name:"Morocco",                        code:"+212" },
-        { flag:"🇲🇿", name:"Mozambique",                     code:"+258" },
-        { flag:"🇲🇲", name:"Myanmar",                        code:"+95"  },
-        { flag:"🇳🇦", name:"Namibia",                        code:"+264" },
-        { flag:"🇳🇵", name:"Nepal",                          code:"+977" },
-        { flag:"🇳🇱", name:"Netherlands",                    code:"+31"  },
-        { flag:"🇳🇿", name:"New Zealand",                    code:"+64"  },
-        { flag:"🇳🇮", name:"Nicaragua",                      code:"+505" },
-        { flag:"🇳🇪", name:"Niger",                          code:"+227" },
-        { flag:"🇳🇬", name:"Nigeria",                        code:"+234" },
-        { flag:"🇲🇰", name:"North Macedonia",                code:"+389" },
-        { flag:"🇳🇴", name:"Norway",                         code:"+47"  },
-        { flag:"🇴🇲", name:"Oman",                           code:"+968" },
-        { flag:"🇵🇰", name:"Pakistan",                       code:"+92"  },
-        { flag:"🇵🇼", name:"Palau",                          code:"+680" },
-        { flag:"🇵🇸", name:"Palestine",                      code:"+970" },
-        { flag:"🇵🇦", name:"Panama",                         code:"+507" },
-        { flag:"🇵🇬", name:"Papua New Guinea",               code:"+675" },
-        { flag:"🇵🇾", name:"Paraguay",                       code:"+595" },
-        { flag:"🇵🇪", name:"Peru",                           code:"+51"  },
-        { flag:"🇵🇭", name:"Philippines",                    code:"+63"  },
-        { flag:"🇵🇱", name:"Poland",                         code:"+48"  },
-        { flag:"🇵🇹", name:"Portugal",                       code:"+351" },
-        { flag:"🇶🇦", name:"Qatar",                          code:"+974" },
-        { flag:"🇷🇴", name:"Romania",                        code:"+40"  },
-        { flag:"🇷🇺", name:"Russia",                         code:"+7"   },
-        { flag:"🇷🇼", name:"Rwanda",                         code:"+250" },
-        { flag:"🇰🇳", name:"Saint Kitts & Nevis",            code:"+1869"},
-        { flag:"🇱🇨", name:"Saint Lucia",                    code:"+1758"},
-        { flag:"🇻🇨", name:"Saint Vincent",                  code:"+1784"},
-        { flag:"🇼🇸", name:"Samoa",                          code:"+685" },
-        { flag:"🇸🇲", name:"San Marino",                     code:"+378" },
-        { flag:"🇸🇹", name:"Sao Tome & Principe",            code:"+239" },
-        { flag:"🇸🇦", name:"Saudi Arabia",                   code:"+966" },
-        { flag:"🇸🇳", name:"Senegal",                        code:"+221" },
-        { flag:"🇷🇸", name:"Serbia",                         code:"+381" },
-        { flag:"🇸🇱", name:"Sierra Leone",                   code:"+232" },
-        { flag:"🇸🇬", name:"Singapore",                      code:"+65"  },
-        { flag:"🇸🇰", name:"Slovakia",                       code:"+421" },
-        { flag:"🇸🇮", name:"Slovenia",                       code:"+386" },
-        { flag:"🇸🇧", name:"Solomon Islands",                code:"+677" },
-        { flag:"🇸🇴", name:"Somalia",                        code:"+252" },
-        { flag:"🇿🇦", name:"South Africa",                   code:"+27"  },
-        { flag:"🇸🇸", name:"South Sudan",                    code:"+211" },
-        { flag:"🇪🇸", name:"Spain",                          code:"+34"  },
-        { flag:"🇱🇰", name:"Sri Lanka",                      code:"+94"  },
-        { flag:"🇸🇩", name:"Sudan",                          code:"+249" },
-        { flag:"🇸🇷", name:"Suriname",                       code:"+597" },
-        { flag:"🇸🇪", name:"Sweden",                         code:"+46"  },
-        { flag:"🇨🇭", name:"Switzerland",                    code:"+41"  },
-        { flag:"🇸🇾", name:"Syria",                          code:"+963" },
-        { flag:"🇹🇼", name:"Taiwan",                         code:"+886" },
-        { flag:"🇹🇯", name:"Tajikistan",                     code:"+992" },
-        { flag:"🇹🇿", name:"Tanzania",                       code:"+255" },
-        { flag:"🇹🇭", name:"Thailand",                       code:"+66"  },
-        { flag:"🇹🇱", name:"Timor-Leste",                    code:"+670" },
-        { flag:"🇹🇬", name:"Togo",                           code:"+228" },
-        { flag:"🇹🇹", name:"Trinidad & Tobago",              code:"+1868"},
-        { flag:"🇹🇳", name:"Tunisia",                        code:"+216" },
-        { flag:"🇹🇷", name:"Turkey",                         code:"+90"  },
-        { flag:"🇹🇲", name:"Turkmenistan",                   code:"+993" },
-        { flag:"🇺🇬", name:"Uganda",                         code:"+256" },
-        { flag:"🇺🇦", name:"Ukraine",                        code:"+380" },
-        { flag:"🇦🇪", name:"United Arab Emirates",           code:"+971" },
-        { flag:"🇬🇧", name:"United Kingdom",                 code:"+44"  },
-        { flag:"🇺🇸", name:"United States",                  code:"+1"   },
-        { flag:"🇺🇾", name:"Uruguay",                        code:"+598" },
-        { flag:"🇺🇿", name:"Uzbekistan",                     code:"+998" },
-        { flag:"🇻🇺", name:"Vanuatu",                        code:"+678" },
-        { flag:"🇻🇪", name:"Venezuela",                      code:"+58"  },
-        { flag:"🇻🇳", name:"Vietnam",                        code:"+84"  },
-        { flag:"🇾🇪", name:"Yemen",                          code:"+967" },
-        { flag:"🇿🇲", name:"Zambia",                         code:"+260" },
-        { flag:"🇿🇼", name:"Zimbabwe",                       code:"+263" },
+        { flag: "🇦🇫", name: "Afghanistan", code: "+93" },
+        { flag: "🇦🇱", name: "Albania", code: "+355" },
+        { flag: "🇩🇿", name: "Algeria", code: "+213" },
+        { flag: "🇦🇩", name: "Andorra", code: "+376" },
+        { flag: "🇦🇴", name: "Angola", code: "+244" },
+        { flag: "🇦🇬", name: "Antigua & Barbuda", code: "+1268" },
+        { flag: "🇦🇷", name: "Argentina", code: "+54" },
+        { flag: "🇦🇲", name: "Armenia", code: "+374" },
+        { flag: "🇦🇺", name: "Australia", code: "+61" },
+        { flag: "🇦🇹", name: "Austria", code: "+43" },
+        { flag: "🇦🇿", name: "Azerbaijan", code: "+994" },
+        { flag: "🇧🇸", name: "Bahamas", code: "+1242" },
+        { flag: "🇧🇭", name: "Bahrain", code: "+973" },
+        { flag: "🇧🇩", name: "Bangladesh", code: "+880" },
+        { flag: "🇧🇧", name: "Barbados", code: "+1246" },
+        { flag: "🇧🇾", name: "Belarus", code: "+375" },
+        { flag: "🇧🇪", name: "Belgium", code: "+32" },
+        { flag: "🇧🇿", name: "Belize", code: "+501" },
+        { flag: "🇧🇯", name: "Benin", code: "+229" },
+        { flag: "🇧🇹", name: "Bhutan", code: "+975" },
+        { flag: "🇧🇴", name: "Bolivia", code: "+591" },
+        { flag: "🇧🇦", name: "Bosnia & Herzegovina", code: "+387" },
+        { flag: "🇧🇼", name: "Botswana", code: "+267" },
+        { flag: "🇧🇷", name: "Brazil", code: "+55" },
+        { flag: "🇧🇳", name: "Brunei", code: "+673" },
+        { flag: "🇧🇬", name: "Bulgaria", code: "+359" },
+        { flag: "🇧🇫", name: "Burkina Faso", code: "+226" },
+        { flag: "🇧🇮", name: "Burundi", code: "+257" },
+        { flag: "🇨🇻", name: "Cabo Verde", code: "+238" },
+        { flag: "🇰🇭", name: "Cambodia", code: "+855" },
+        { flag: "🇨🇲", name: "Cameroon", code: "+237" },
+        { flag: "🇨🇦", name: "Canada", code: "+1" },
+        { flag: "🇨🇫", name: "Central African Republic", code: "+236" },
+        { flag: "🇹🇩", name: "Chad", code: "+235" },
+        { flag: "🇨🇱", name: "Chile", code: "+56" },
+        { flag: "🇨🇳", name: "China", code: "+86" },
+        { flag: "🇨🇴", name: "Colombia", code: "+57" },
+        { flag: "🇰🇲", name: "Comoros", code: "+269" },
+        { flag: "🇨🇬", name: "Congo", code: "+242" },
+        { flag: "🇨🇩", name: "Congo (DRC)", code: "+243" },
+        { flag: "🇨🇷", name: "Costa Rica", code: "+506" },
+        { flag: "🇭🇷", name: "Croatia", code: "+385" },
+        { flag: "🇨🇺", name: "Cuba", code: "+53" },
+        { flag: "🇨🇾", name: "Cyprus", code: "+357" },
+        { flag: "🇨🇿", name: "Czech Republic", code: "+420" },
+        { flag: "🇩🇰", name: "Denmark", code: "+45" },
+        { flag: "🇩🇯", name: "Djibouti", code: "+253" },
+        { flag: "🇩🇴", name: "Dominican Republic", code: "+1809" },
+        { flag: "🇪🇨", name: "Ecuador", code: "+593" },
+        { flag: "🇪🇬", name: "Egypt", code: "+20" },
+        { flag: "🇸🇻", name: "El Salvador", code: "+503" },
+        { flag: "🇬🇶", name: "Equatorial Guinea", code: "+240" },
+        { flag: "🇪🇷", name: "Eritrea", code: "+291" },
+        { flag: "🇪🇪", name: "Estonia", code: "+372" },
+        { flag: "🇸🇿", name: "Eswatini", code: "+268" },
+        { flag: "🇪🇹", name: "Ethiopia", code: "+251" },
+        { flag: "🇫🇯", name: "Fiji", code: "+679" },
+        { flag: "🇫🇮", name: "Finland", code: "+358" },
+        { flag: "🇫🇷", name: "France", code: "+33" },
+        { flag: "🇬🇦", name: "Gabon", code: "+241" },
+        { flag: "🇬🇲", name: "Gambia", code: "+220" },
+        { flag: "🇬🇪", name: "Georgia", code: "+995" },
+        { flag: "🇩🇪", name: "Germany", code: "+49" },
+        { flag: "🇬🇭", name: "Ghana", code: "+233" },
+        { flag: "🇬🇷", name: "Greece", code: "+30" },
+        { flag: "🇬🇩", name: "Grenada", code: "+1473" },
+        { flag: "🇬🇹", name: "Guatemala", code: "+502" },
+        { flag: "🇬🇳", name: "Guinea", code: "+224" },
+        { flag: "🇬🇼", name: "Guinea-Bissau", code: "+245" },
+        { flag: "🇬🇾", name: "Guyana", code: "+592" },
+        { flag: "🇭🇹", name: "Haiti", code: "+509" },
+        { flag: "🇭🇳", name: "Honduras", code: "+504" },
+        { flag: "🇭🇺", name: "Hungary", code: "+36" },
+        { flag: "🇮🇸", name: "Iceland", code: "+354" },
+        { flag: "🇮🇳", name: "India", code: "+91" },
+        { flag: "🇮🇩", name: "Indonesia", code: "+62" },
+        { flag: "🇮🇷", name: "Iran", code: "+98" },
+        { flag: "🇮🇶", name: "Iraq", code: "+964" },
+        { flag: "🇮🇪", name: "Ireland", code: "+353" },
+        { flag: "🇮🇱", name: "Israel", code: "+972" },
+        { flag: "🇮🇹", name: "Italy", code: "+39" },
+        { flag: "🇯🇲", name: "Jamaica", code: "+1876" },
+        { flag: "🇯🇵", name: "Japan", code: "+81" },
+        { flag: "🇯🇴", name: "Jordan", code: "+962" },
+        { flag: "🇰🇿", name: "Kazakhstan", code: "+7" },
+        { flag: "🇰🇪", name: "Kenya", code: "+254" },
+        { flag: "🇰🇮", name: "Kiribati", code: "+686" },
+        { flag: "🇽🇰", name: "Kosovo", code: "+383" },
+        { flag: "🇰🇼", name: "Kuwait", code: "+965" },
+        { flag: "🇰🇬", name: "Kyrgyzstan", code: "+996" },
+        { flag: "🇱🇦", name: "Laos", code: "+856" },
+        { flag: "🇱🇻", name: "Latvia", code: "+371" },
+        { flag: "🇱🇧", name: "Lebanon", code: "+961" },
+        { flag: "🇱🇸", name: "Lesotho", code: "+266" },
+        { flag: "🇱🇷", name: "Liberia", code: "+231" },
+        { flag: "🇱🇾", name: "Libya", code: "+218" },
+        { flag: "🇱🇮", name: "Liechtenstein", code: "+423" },
+        { flag: "🇱🇹", name: "Lithuania", code: "+370" },
+        { flag: "🇱🇺", name: "Luxembourg", code: "+352" },
+        { flag: "🇲🇬", name: "Madagascar", code: "+261" },
+        { flag: "🇲🇼", name: "Malawi", code: "+265" },
+        { flag: "🇲🇾", name: "Malaysia", code: "+60" },
+        { flag: "🇲🇻", name: "Maldives", code: "+960" },
+        { flag: "🇲🇱", name: "Mali", code: "+223" },
+        { flag: "🇲🇹", name: "Malta", code: "+356" },
+        { flag: "🇲🇷", name: "Mauritania", code: "+222" },
+        { flag: "🇲🇺", name: "Mauritius", code: "+230" },
+        { flag: "🇲🇽", name: "Mexico", code: "+52" },
+        { flag: "🇫🇲", name: "Micronesia", code: "+691" },
+        { flag: "🇲🇩", name: "Moldova", code: "+373" },
+        { flag: "🇲🇨", name: "Monaco", code: "+377" },
+        { flag: "🇲🇳", name: "Mongolia", code: "+976" },
+        { flag: "🇲🇪", name: "Montenegro", code: "+382" },
+        { flag: "🇲🇦", name: "Morocco", code: "+212" },
+        { flag: "🇲🇿", name: "Mozambique", code: "+258" },
+        { flag: "🇲🇲", name: "Myanmar", code: "+95" },
+        { flag: "🇳🇦", name: "Namibia", code: "+264" },
+        { flag: "🇳🇵", name: "Nepal", code: "+977" },
+        { flag: "🇳🇱", name: "Netherlands", code: "+31" },
+        { flag: "🇳🇿", name: "New Zealand", code: "+64" },
+        { flag: "🇳🇮", name: "Nicaragua", code: "+505" },
+        { flag: "🇳🇪", name: "Niger", code: "+227" },
+        { flag: "🇳🇬", name: "Nigeria", code: "+234" },
+        { flag: "🇲🇰", name: "North Macedonia", code: "+389" },
+        { flag: "🇳🇴", name: "Norway", code: "+47" },
+        { flag: "🇴🇲", name: "Oman", code: "+968" },
+        { flag: "🇵🇰", name: "Pakistan", code: "+92" },
+        { flag: "🇵🇼", name: "Palau", code: "+680" },
+        { flag: "🇵🇸", name: "Palestine", code: "+970" },
+        { flag: "🇵🇦", name: "Panama", code: "+507" },
+        { flag: "🇵🇬", name: "Papua New Guinea", code: "+675" },
+        { flag: "🇵🇾", name: "Paraguay", code: "+595" },
+        { flag: "🇵🇪", name: "Peru", code: "+51" },
+        { flag: "🇵🇭", name: "Philippines", code: "+63" },
+        { flag: "🇵🇱", name: "Poland", code: "+48" },
+        { flag: "🇵🇹", name: "Portugal", code: "+351" },
+        { flag: "🇶🇦", name: "Qatar", code: "+974" },
+        { flag: "🇷🇴", name: "Romania", code: "+40" },
+        { flag: "🇷🇺", name: "Russia", code: "+7" },
+        { flag: "🇷🇼", name: "Rwanda", code: "+250" },
+        { flag: "🇰🇳", name: "Saint Kitts & Nevis", code: "+1869" },
+        { flag: "🇱🇨", name: "Saint Lucia", code: "+1758" },
+        { flag: "🇻🇨", name: "Saint Vincent", code: "+1784" },
+        { flag: "🇼🇸", name: "Samoa", code: "+685" },
+        { flag: "🇸🇲", name: "San Marino", code: "+378" },
+        { flag: "🇸🇹", name: "Sao Tome & Principe", code: "+239" },
+        { flag: "🇸🇦", name: "Saudi Arabia", code: "+966" },
+        { flag: "🇸🇳", name: "Senegal", code: "+221" },
+        { flag: "🇷🇸", name: "Serbia", code: "+381" },
+        { flag: "🇸🇱", name: "Sierra Leone", code: "+232" },
+        { flag: "🇸🇬", name: "Singapore", code: "+65" },
+        { flag: "🇸🇰", name: "Slovakia", code: "+421" },
+        { flag: "🇸🇮", name: "Slovenia", code: "+386" },
+        { flag: "🇸🇧", name: "Solomon Islands", code: "+677" },
+        { flag: "🇸🇴", name: "Somalia", code: "+252" },
+        { flag: "🇿🇦", name: "South Africa", code: "+27" },
+        { flag: "🇸🇸", name: "South Sudan", code: "+211" },
+        { flag: "🇪🇸", name: "Spain", code: "+34" },
+        { flag: "🇱🇰", name: "Sri Lanka", code: "+94" },
+        { flag: "🇸🇩", name: "Sudan", code: "+249" },
+        { flag: "🇸🇷", name: "Suriname", code: "+597" },
+        { flag: "🇸🇪", name: "Sweden", code: "+46" },
+        { flag: "🇨🇭", name: "Switzerland", code: "+41" },
+        { flag: "🇸🇾", name: "Syria", code: "+963" },
+        { flag: "🇹🇼", name: "Taiwan", code: "+886" },
+        { flag: "🇹🇯", name: "Tajikistan", code: "+992" },
+        { flag: "🇹🇿", name: "Tanzania", code: "+255" },
+        { flag: "🇹🇭", name: "Thailand", code: "+66" },
+        { flag: "🇹🇱", name: "Timor-Leste", code: "+670" },
+        { flag: "🇹🇬", name: "Togo", code: "+228" },
+        { flag: "🇹🇹", name: "Trinidad & Tobago", code: "+1868" },
+        { flag: "🇹🇳", name: "Tunisia", code: "+216" },
+        { flag: "🇹🇷", name: "Turkey", code: "+90" },
+        { flag: "🇹🇲", name: "Turkmenistan", code: "+993" },
+        { flag: "🇺🇬", name: "Uganda", code: "+256" },
+        { flag: "🇺🇦", name: "Ukraine", code: "+380" },
+        { flag: "🇦🇪", name: "United Arab Emirates", code: "+971" },
+        { flag: "🇬🇧", name: "United Kingdom", code: "+44" },
+        { flag: "🇺🇸", name: "United States", code: "+1" },
+        { flag: "🇺🇾", name: "Uruguay", code: "+598" },
+        { flag: "🇺🇿", name: "Uzbekistan", code: "+998" },
+        { flag: "🇻🇺", name: "Vanuatu", code: "+678" },
+        { flag: "🇻🇪", name: "Venezuela", code: "+58" },
+        { flag: "🇻🇳", name: "Vietnam", code: "+84" },
+        { flag: "🇾🇪", name: "Yemen", code: "+967" },
+        { flag: "🇿🇲", name: "Zambia", code: "+260" },
+        { flag: "🇿🇼", name: "Zimbabwe", code: "+263" },
       ];
 
-      const $wrap    = this.$root.find('.fgbw__cc-picker');
+      const $wrap = this.$root.find('.fgbw__cc-picker');
       if (!$wrap.length) return;
 
-      const $hidden  = $wrap.find('.fgbw__dial-code');       // hidden input
+      const $hidden = $wrap.find('.fgbw__dial-code');       // hidden input
       const $trigger = $wrap.find('.fgbw__cc-trigger');
-      const $panel   = $wrap.find('.fgbw__cc-panel');
-      const $search  = $wrap.find('.fgbw__cc-search');
-      const $list    = $wrap.find('.fgbw__cc-list');
+      const $panel = $wrap.find('.fgbw__cc-panel');
+      const $search = $wrap.find('.fgbw__cc-search');
+      const $list = $wrap.find('.fgbw__cc-list');
 
       let selectedCode = $hidden.val() || '+92';
       let isOpen = false;
@@ -1426,9 +1432,9 @@
         const q = (filter || '').toLowerCase().trim();
         const items = q
           ? COUNTRIES.filter(c =>
-              c.name.toLowerCase().includes(q) ||
-              c.code.includes(q)
-            )
+            c.name.toLowerCase().includes(q) ||
+            c.code.includes(q)
+          )
           : COUNTRIES;
 
         $list.empty();
@@ -1438,7 +1444,7 @@
         }
         items.forEach(c => {
           const $li = $('<li>')
-            .attr({ role:'option', tabindex:'-1', 'data-code': c.code })
+            .attr({ role: 'option', tabindex: '-1', 'data-code': c.code })
             .attr('aria-selected', c.code === selectedCode ? 'true' : 'false')
             .html(
               `<span class="fgbw__cc-li-flag">${c.flag}</span>` +
@@ -1466,7 +1472,7 @@
         $hidden.val(c.code);
         updateTrigger(c);
         // mark selected in list
-        $list.find('li').each(function() {
+        $list.find('li').each(function () {
           $(this).attr('aria-selected', $(this).data('code') === c.code ? 'true' : 'false');
         });
       };
@@ -1496,7 +1502,7 @@
         isOpen ? closePanel() : openPanel();
       });
 
-      $search.on('input', function() {
+      $search.on('input', function () {
         renderList($(this).val());
       });
 
@@ -1512,9 +1518,9 @@
       // Keyboard navigation on list items
       $list.on('keydown', 'li', (e) => {
         const $items = $list.find('li:not(.fgbw__cc-no-results)');
-        const idx    = $items.index(e.currentTarget);
-        if (e.key === 'ArrowDown')  { e.preventDefault(); $items.eq(idx + 1).trigger('focus'); }
-        if (e.key === 'ArrowUp')    { e.preventDefault(); idx === 0 ? $search.trigger('focus') : $items.eq(idx - 1).trigger('focus'); }
+        const idx = $items.index(e.currentTarget);
+        if (e.key === 'ArrowDown') { e.preventDefault(); $items.eq(idx + 1).trigger('focus'); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); idx === 0 ? $search.trigger('focus') : $items.eq(idx - 1).trigger('focus'); }
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           const code = $(e.currentTarget).data('code');
@@ -1531,8 +1537,8 @@
 
       // Set initial display to Pakistan +92
       const defaultCountry = COUNTRIES.find(c => c.code === selectedCode && c.name === 'Pakistan')
-                          || COUNTRIES.find(c => c.code === selectedCode)
-                          || COUNTRIES[0];
+        || COUNTRIES.find(c => c.code === selectedCode)
+        || COUNTRIES[0];
       updateTrigger(defaultCountry);
       renderList('');
     }
@@ -1720,7 +1726,7 @@
             this.fieldError($dt, "Date & time is required.");
             valid = false;
           }
-          if (!this.isLocationFieldValid(this.state.trip.pickup.pickup,  "oneway_pickup",  "Pick-Up location is required."))  valid = false;
+          if (!this.isLocationFieldValid(this.state.trip.pickup.pickup, "oneway_pickup", "Pick-Up location is required.")) valid = false;
           if (!this.isLocationFieldValid(this.state.trip.pickup.dropoff, "oneway_dropoff", "Drop-off location is required.")) valid = false;
 
         } else {
@@ -1731,14 +1737,14 @@
             this.fieldError($dtPickup, "Pick-up date & time is required.");
             valid = false;
           }
-          if (!this.isLocationFieldValid(this.state.trip.pickup.pickup,  "round_pickup_pickup",  "Pick-up location is required."))  valid = false;
+          if (!this.isLocationFieldValid(this.state.trip.pickup.pickup, "round_pickup_pickup", "Pick-up location is required.")) valid = false;
           if (!this.isLocationFieldValid(this.state.trip.pickup.dropoff, "round_pickup_dropoff", "Drop-off location is required.")) valid = false;
 
           if (!this.state.trip.return.datetime) {
             this.fieldError($dtReturn, "Return date & time is required.");
             valid = false;
           }
-          if (!this.isLocationFieldValid(this.state.trip.return.pickup,  "round_return_pickup",  "Return pick-up location is required."))  valid = false;
+          if (!this.isLocationFieldValid(this.state.trip.return.pickup, "round_return_pickup", "Return pick-up location is required.")) valid = false;
           if (!this.isLocationFieldValid(this.state.trip.return.dropoff, "round_return_dropoff", "Return drop-off location is required.")) valid = false;
         }
 
@@ -1750,15 +1756,15 @@
         const $phone = this.$root.find('input[name="phone_number"]');
         const $email = this.$root.find('input[name="email"]');
         const $first = this.$root.find('input[name="first_name"]');
-        const $last  = this.$root.find('input[name="last_name"]');
+        const $last = this.$root.find('input[name="last_name"]');
 
-        const name  = this.state.contact.name  || "";
+        const name = this.state.contact.name || "";
         const email = this.state.contact.email || "";
         // Validate the raw number input (not the combined value which includes dial code)
         const phoneRaw = $phone.val().trim();
         const parts = name.split(" ");
         const first = parts[0] || "";
-        const last  = parts.slice(1).join(" ") || "";
+        const last = parts.slice(1).join(" ") || "";
 
         if (!first) {
           this.fieldError($first, "First name is required.");
@@ -1787,7 +1793,7 @@
     // Validates a location block and shows a red error under its address/airport input
     isLocationFieldValid(loc, blockAttr, msg) {
       const $block = this.$root.find('[data-location-block="' + blockAttr + '"]');
-      const mode   = loc ? loc.mode : null;
+      const mode = loc ? loc.mode : null;
 
       if (!loc || !mode) {
         const $inp = $block.find(".fgbw__address");
@@ -1798,7 +1804,7 @@
       let locValid = true;
 
       if (mode === "address") {
-        const hasPlaces  = loc.address && loc.address.formatted_address;
+        const hasPlaces = loc.address && loc.address.formatted_address;
         const hasRawText = loc._rawText && loc._rawText.trim().length > 0;
         if (!hasPlaces && !hasRawText) {
           const $inp = $block.find(".fgbw__address");
@@ -1942,13 +1948,13 @@
       // validation failed the state was still set yet submit() had already read stale
       // empty state values. Now we always read fresh DOM values here first.
       const first = this.$root.find('input[name="first_name"]').val().trim();
-      const last  = this.$root.find('input[name="last_name"]').val().trim();
+      const last = this.$root.find('input[name="last_name"]').val().trim();
       const email = this.$root.find('input[name="email"]').val().trim();
       const phoneNumber = this.$root.find('input[name="phone_number"]').val().trim() || '';
-      const dialCode    = this.$root.find('.fgbw__dial-code').val() || '';
+      const dialCode = this.$root.find('.fgbw__dial-code').val() || '';
       // Strip the -CA suffix used to distinguish Canada +1 from US +1 in display
-      const cleanCode   = dialCode.replace(/-[A-Z]+$/, '');
-      const rawPhone    = phoneNumber ? (cleanCode + ' ' + phoneNumber) : '';
+      const cleanCode = dialCode.replace(/-[A-Z]+$/, '');
+      const rawPhone = phoneNumber ? (cleanCode + ' ' + phoneNumber) : '';
       const additionalNote = this.$root.find('textarea[name="additional_note"]').val().trim() || '';
       this.state.contact = { name: (first + " " + last).trim(), email, phone: rawPhone, additional_note: additionalNote };
 
@@ -2054,10 +2060,10 @@
     }
 
     // Read the segment datetime — required before making the API call
-    const segBlock  = block.closest("[data-segment]");
-    const segKey    = segBlock ? segBlock.getAttribute("data-segment") : "";
-    const dtInput   = segKey ? document.querySelector(`[data-datetime-for="${segKey}"]`) : null;
-    const rawDt     = dtInput ? dtInput.value.trim() : "";
+    const segBlock = block.closest("[data-segment]");
+    const segKey = segBlock ? segBlock.getAttribute("data-segment") : "";
+    const dtInput = segKey ? document.querySelector(`[data-datetime-for="${segKey}"]`) : null;
+    const rawDt = dtInput ? dtInput.value.trim() : "";
 
     // FIX #2: datetime-local inputs always store values as "YYYY-MM-DDTHH:MM" (ISO 8601).
     // Previously a regex was used which would silently return "" for any non-ISO format,
@@ -2087,10 +2093,10 @@
         _wpnonce: fgbw_ajax.nonce,
         airline_iata: airlineIata,
         flight_number: flightNo,
-        flight_date:  flightDate,
+        flight_date: flightDate,
         airport_iata: block.querySelector(".fgbw__airport")
-                        ? (block.querySelector(".fgbw__airport").dataset.iataCode || "")
-                        : "",
+          ? (block.querySelector(".fgbw__airport").dataset.iataCode || "")
+          : "",
       })
     })
       .then(r => r.json())
@@ -2114,9 +2120,9 @@
       ? `<div class="fgbw-flight-card__updated"><span>Last Updated:</span> ${data.last_updated}</div>`
       : "";
     const depTerm = data.departure_terminal || "–";
-    const depGate = data.departure_gate     || "–";
-    const arrTerm = data.arrival_terminal   || "–";
-    const arrGate = data.arrival_gate       || "–";
+    const depGate = data.departure_gate || "–";
+    const arrTerm = data.arrival_terminal || "–";
+    const arrGate = data.arrival_gate || "–";
 
     let dateWarn = "";
     if (data.date_matched === false) {
