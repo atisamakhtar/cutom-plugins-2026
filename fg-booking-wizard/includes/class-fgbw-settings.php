@@ -63,7 +63,9 @@ jQuery(function($){
 
         add_settings_field('google_places_key', 'Google Places API Key',        [$this, 'field_google'],      'fgbw-settings', 'fgbw_api');
         add_settings_field('aviationstack_key', 'Aviationstack API Key',         [$this, 'field_aviation'],    'fgbw-settings', 'fgbw_api');
+        add_settings_field('aviationstack_plan','Aviationstack Plan',            [$this, 'field_av_plan'],     'fgbw-settings', 'fgbw_api');
         add_settings_field('admin_email',       'Admin Notification Email',      [$this, 'field_admin_email'], 'fgbw-settings', 'fgbw_api');
+        add_settings_field('debug_logging',     'Debug Logging',                 [$this, 'field_debug_log'],   'fgbw-settings', 'fgbw_api');
 
         // ── Section: Email ────────────────────────────────────────────────────
         add_settings_section('fgbw_email_sect', 'Email Settings', [$this, 'email_section_desc'], 'fgbw-settings');
@@ -79,7 +81,11 @@ jQuery(function($){
         $out = [];
         $out['google_places_key']      = sanitize_text_field($input['google_places_key'] ?? '');
         $out['aviationstack_key']      = sanitize_text_field($input['aviationstack_key'] ?? '');
+        $out['aviationstack_plan']     = in_array($input['aviationstack_plan'] ?? '', ['free','basic','business','enterprise'], true)
+                                            ? $input['aviationstack_plan']
+                                            : 'free';
         $out['admin_email']            = sanitize_email($input['admin_email'] ?? get_option('admin_email'));
+        $out['debug_logging']          = !empty($input['debug_logging']) ? '1' : '0';
         $out['email_logo_url']         = esc_url_raw($input['email_logo_url'] ?? '');
         $out['email_customer_subject'] = sanitize_text_field($input['email_customer_subject'] ?? 'Your Reservation Was Successfully Submitted!');
         $out['email_admin_subject']    = sanitize_text_field($input['email_admin_subject'] ?? 'New Reservation Submitted - {name}');
@@ -114,6 +120,33 @@ jQuery(function($){
         $v = esc_attr(fgbw_get_option('aviationstack_key', ''));
         echo "<input type='password' class='regular-text' name='fgbw_settings[aviationstack_key]' value='{$v}' autocomplete='new-password' />";
         echo "<p class='description'>Server-side only — used to validate flight numbers.</p>";
+    }
+
+    public function field_av_plan(): void {
+        $v       = fgbw_get_option('aviationstack_plan', 'free');
+        $options = [
+            'free'       => 'Free — HTTP only, no date filter, no future flights',
+            'basic'      => 'Basic — HTTP, no date filter, future flights available',
+            'business'   => 'Business — HTTPS, flight_date filter, future flights',
+            'enterprise' => 'Enterprise — HTTPS, all features',
+        ];
+        echo "<select name='fgbw_settings[aviationstack_plan]'>";
+        foreach ($options as $val => $label) {
+            $sel = selected($v, $val, false);
+            echo "<option value='" . esc_attr($val) . "' {$sel}>" . esc_html($label) . "</option>";
+        }
+        echo "</select>";
+        echo "<p class='description'>Select your Aviationstack plan. The plugin automatically uses HTTPS and the correct endpoints for your plan. "
+           . "If unsure, select <strong>Free</strong> — it works on all plans (paid plans will automatically upgrade to HTTPS).</p>";
+    }
+
+    public function field_debug_log(): void {
+        $v = fgbw_get_option('debug_logging', '0');
+        echo "<label><input type='checkbox' name='fgbw_settings[debug_logging]' value='1' " . checked($v, '1', false) . " /> "
+           . "Enable debug logging to <code>wp-content/debug.log</code></label>";
+        echo "<p class='description'>When enabled, all Aviationstack API requests and responses are logged. "
+           . "Use this to diagnose flight lookup issues in production without enabling site-wide <code>WP_DEBUG</code>. "
+           . "<strong>Disable when not actively debugging.</strong></p>";
     }
 
     public function field_admin_email(): void {

@@ -349,11 +349,13 @@
           const dtInput = document.querySelector(
             `[data-datetime-for="${this.tripSegment}"]`
           );
-          const rawDt     = dtInput ? dtInput.value.trim() : "";
-          const dateMatch = rawDt.match(/(\d{4}-\d{2}-\d{2})/);
-          const flightDate = dateMatch ? dateMatch[1] : "";
+          const rawDt      = dtInput ? dtInput.value.trim() : "";
+          // FIX #2 (second instance): Use reliable split on T/space instead of regex.
+          // datetime-local inputs always store "YYYY-MM-DDTHH:MM"; some polyfills use a space.
+          const flightDate  = rawDt ? rawDt.split("T")[0].split(" ")[0] : "";
+          const dateIsValid = /^\d{4}-\d{2}-\d{2}$/.test(flightDate);
 
-          if (!flightDate) {
+          if (!dateIsValid) {
             $result.html(
               `<div class="fgbw__error">
                 Please enter the <strong>Date &amp; Time</strong> above before confirming flight details.
@@ -2056,11 +2058,16 @@
     const segKey    = segBlock ? segBlock.getAttribute("data-segment") : "";
     const dtInput   = segKey ? document.querySelector(`[data-datetime-for="${segKey}"]`) : null;
     const rawDt     = dtInput ? dtInput.value.trim() : "";
-    const dateMatch = rawDt.match(/(\d{4}-\d{2}-\d{2})/);
-    const flightDate = dateMatch ? dateMatch[1] : "";
 
-    // Block if no date selected — API returns wrong flight without a date
-    if (!flightDate) {
+    // FIX #2: datetime-local inputs always store values as "YYYY-MM-DDTHH:MM" (ISO 8601).
+    // Previously a regex was used which would silently return "" for any non-ISO format,
+    // blocking the flight lookup with a misleading "enter date first" error.
+    // Splitting on T (datetime-local) or space (some polyfills) is reliable and explicit.
+    const flightDate = rawDt ? rawDt.split("T")[0].split(" ")[0] : "";
+    const dateIsValid = /^\d{4}-\d{2}-\d{2}$/.test(flightDate);
+
+    // Block if no valid date selected — API returns wrong flight without a date
+    if (!dateIsValid) {
       resultBox.innerHTML = `<div class="fgbw__error">Please enter the <strong>Date &amp; Time</strong> above before confirming flight details.</div>`;
       if (dtInput) {
         dtInput.focus();

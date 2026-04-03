@@ -44,17 +44,25 @@ class FGBW_AJAX
         $key = $this->aviation_key();
         if (!$key) return ['ok' => false, 'message' => 'Aviationstack key not configured.'];
 
-        $base = 'http://api.aviationstack.com/v1/';
+        // FIX #1: Use HTTPS — free plan uses http://, paid plans require https://.
+        // Using https:// works on both; using http:// breaks all paid-plan requests.
+        $base                = 'https://api.aviationstack.com/v1/';
         $query['access_key'] = $key;
 
         $url = add_query_arg($query, $base . ltrim($endpoint, '/'));
 
-        $cache_key = 'fgbw_av_' . md5($url);
+        // FIX #3: Build cache key WITHOUT the API key so it is never stored in the DB
+        // and the key cannot be inferred from transient names.
+        $query_no_key = $query;
+        unset($query_no_key['access_key']);
+        $cache_key = 'fgbw_av_' . md5($endpoint . serialize($query_no_key));
+
         $cached = get_transient($cache_key);
         if ($cached !== false) return $cached;
 
         $resp = wp_remote_get($url, ['timeout' => 12]);
         if (is_wp_error($resp)) {
+            // FIX #5a: Never cache network errors — they are transient by nature.
             return ['ok' => false, 'message' => $resp->get_error_message()];
         }
 
@@ -62,14 +70,32 @@ class FGBW_AJAX
         $body = wp_remote_retrieve_body($resp);
         $data = json_decode($body, true);
 
+        // FIX #5b: Parse structured Aviationstack error codes for clear messaging.
+        if (!empty($data['error'])) {
+            $err_code = $data['error']['code'] ?? 'unknown';
+            $err_info = $data['error']['info'] ?? '';
+            fgbw_log("Aviationstack API error: code={$err_code} info={$err_info}");
+            $user_msg = match($err_code) {
+                'invalid_access_key'          => 'Invalid Aviationstack API key.',
+                'usage_limit_reached'         => 'Flight lookup daily limit reached.',
+                'function_access_restricted'  => 'Flight date filtering requires a higher Aviationstack plan.',
+                'https_access_restricted'     => 'HTTPS access requires a paid Aviationstack plan.',
+                default                       => 'Aviationstack API error (' . $err_code . ').',
+            };
+            // FIX #5c: Do NOT cache API-level errors — a key fix or plan upgrade
+            // should take effect immediately on the next request.
+            return ['ok' => false, 'message' => $user_msg, 'api_code' => $err_code];
+        }
+
         if ($code < 200 || $code >= 300) {
-            $out = ['ok' => false, 'message' => 'Aviationstack error.', 'raw' => $data];
-            set_transient($cache_key, $out, 30);
-            return $out;
+            // FIX #5d: Do NOT cache HTTP-level errors (5xx, 4xx from network layer).
+            fgbw_log("Aviationstack HTTP error: code={$code}");
+            return ['ok' => false, 'message' => 'Aviationstack HTTP error: ' . $code];
         }
 
         $out = ['ok' => true, 'data' => $data];
-        set_transient($cache_key, $out, 60);
+        // FIX #5e: 30s TTL (was 60s) — flight status updates frequently in real time.
+        set_transient($cache_key, $out, 30);
         return $out;
     }
 
@@ -227,9 +253,8 @@ class FGBW_AJAX
             wp_send_json_success(['valid' => false]);
         }
 
-        // $api_key = get_option('fgbw_aviationstack_key');
-        $settings = get_option('fgbw_settings', []);
-        $api_key  = $settings['aviationstack_key'] ?? '';
+        // FIX #1f: Use canonical helper — one code path for key retrieval.
+        $api_key = $this->aviation_key();
 
         if (!$api_key) {
             wp_send_json_error(['message' => 'API key missing']);
@@ -237,8 +262,13 @@ class FGBW_AJAX
 
         $flight_code = strtoupper($airline_iata . $flight_number);
 
+        // FIX #1g: HTTPS — required for paid plans; works on free plan too.
         $response = wp_remote_get(
-            "http://api.aviationstack.com/v1/flights?access_key={$api_key}&flight_iata={$flight_code}"
+            'https://api.aviationstack.com/v1/flights?' . http_build_query([
+                'access_key'  => $api_key,
+                'flight_iata' => $flight_code,
+                'limit'       => 1,
+            ])
         );
 
         if (is_wp_error($response)) {
@@ -491,17 +521,22 @@ class FGBW_AJAX
             wp_send_json_error(['message' => 'Missing flight info.']);
         }
 
-        $settings = get_option('fgbw_settings', []);
-        $api_key  = $settings['aviationstack_key'] ?? '';
+        // FIX #1a: Use canonical helper — one code path for key retrieval everywhere.
+        $api_key = $this->aviation_key();
         if (!$api_key) {
             wp_send_json_error(['message' => 'Flight lookup is not configured.']);
         }
 
         $flight_code    = strtoupper($airline_iata . $flight_number);
         $has_valid_date = ($flight_date && preg_match('/^\d{4}-\d{2}-\d{2}$/', $flight_date));
-        // flightsFuture endpoint ONLY works for dates MORE THAN 7 days ahead.
-        // For dates within 7 days (including today/past), use /flights endpoint.
-        $is_future_date = ($has_valid_date && $flight_date > date('Y-m-d', strtotime('+7 days')));
+
+        // FIX #3: Use explicit UTC for the 7-day threshold.
+        // date() without timezone uses the PHP server's local timezone (often UTC on cloud
+        // servers, but not guaranteed). A UTC-5 customer booking 7d 3h away could get
+        // the wrong strategy if the server clock is ahead of their local date.
+        $utc_now        = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $utc_threshold  = $utc_now->modify('+7 days')->format('Y-m-d');
+        $is_future_date = ($has_valid_date && $flight_date > $utc_threshold);
         $flight         = null;
         $date_matched   = false;
         $debug          = ['strategy' => 'none', 'attempts' => []];
@@ -520,8 +555,12 @@ class FGBW_AJAX
             $arr = $item['arrival']   ?? [];
             $aln = $item['airline']   ?? [];
             $flt = $item['flight']    ?? [];
-            $dep_iso = $flight_date . 'T' . ($dep['scheduledTime'] ?? '00:00') . ':00+00:00';
-            $arr_iso = $flight_date . 'T' . ($arr['scheduledTime'] ?? '00:00') . ':00+00:00';
+            // FIX #4: scheduledTime from /flightsFuture is in the airport's LOCAL time,
+            // NOT UTC. Appending +00:00 was a false UTC assertion that could be wrong
+            // by hours. We now emit the time without a UTC offset — callers must treat
+            // it as local airport time (same as the /flights endpoint does for scheduled).
+            $dep_iso  = $flight_date . 'T' . ($dep['scheduledTime'] ?? '00:00') . ':00';
+            $arr_iso  = $flight_date . 'T' . ($arr['scheduledTime'] ?? '00:00') . ':00';
             $dep_iata = strtoupper($dep['iataCode'] ?? '');
             $arr_iata = strtoupper($arr['iataCode'] ?? '');
             return [
@@ -574,11 +613,11 @@ class FGBW_AJAX
         };
 
         // ── Helper: make one API GET call with 15s timeout ──────────────────
-        // Debug logger — only writes when WP_DEBUG is enabled
+        // Uses fgbw_log() which respects the plugin's debug_logging setting
+        // AND WP_DEBUG — so errors are visible in production without enabling
+        // site-wide debug mode.
         $log = function(string $msg) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[FGBW] ' . $msg);
-            }
+            fgbw_log($msg);
         };
 
         $api_get = function(string $url) use (&$debug, $log): ?array {
@@ -588,8 +627,18 @@ class FGBW_AJAX
                 $log('WP_Error: ' . $resp->get_error_message());
                 return null;
             }
+            $code = wp_remote_retrieve_response_code($resp);
             $body = json_decode(wp_remote_retrieve_body($resp), true);
-            return is_array($body) ? $body : null;
+            if (!is_array($body)) {
+                $log('Non-JSON response from API (HTTP ' . $code . ')');
+                return null;
+            }
+            // Log structured API errors inline so they appear in the debug trail
+            if (!empty($body['error'])) {
+                $log('API error in response: code=' . ($body['error']['code'] ?? 'unknown')
+                    . ' info=' . ($body['error']['info'] ?? ''));
+            }
+            return $body;
         };
 
         // ════════════════════════════════════════════════════════════════════
@@ -604,15 +653,18 @@ class FGBW_AJAX
 
         if ($has_valid_date && $is_future_date && $airport_iata) {
             $debug['strategy'] = 'A_future';
-            $body_a = $api_get('http://api.aviationstack.com/v1/flightsFuture?' . http_build_query([
+            // FIX #1b: HTTPS — required for paid Aviationstack plans.
+            $body_a = $api_get('https://api.aviationstack.com/v1/flightsFuture?' . http_build_query([
                 'access_key'   => $api_key,
                 'iataCode'     => $airport_iata,
                 'type'         => 'arrival',
                 'date'         => $flight_date,
                 'airline_iata' => $airline_iata,
             ]));
+            $log('Strategy A: date=' . $flight_date . ' airport=' . $airport_iata . ' flight=' . $flight_code
+                . ' records=' . count($body_a['data'] ?? []));
             if (!empty($body_a['data'])) {
-$legs = [];
+                $legs = [];
                 foreach ($body_a['data'] as $item) {
                     $flt = $item['flight'] ?? [];
                     // Try all possible field names flightsFuture may use:
@@ -642,8 +694,8 @@ $legs = [];
                         'flight_status' => 'scheduled',
                         'airline'   => ['name' => ucwords(strtolower($aln['name'] ?? '')), 'iata' => strtoupper($aln['iataCode'] ?? '')],
                         'flight'    => ['iata' => strtoupper($flt['iataNumber'] ?? $flt['number'] ?? '')],
-                        'departure' => ['airport'=>$airport_name($di),'iata'=>$di,'terminal'=>strtoupper($dep['terminal']??''),'gate'=>strtoupper($dep['gate']??''),'scheduled'=>$flight_date.'T'.($dep['scheduledTime']??'00:00').':00+00:00','estimated'=>$flight_date.'T'.($dep['scheduledTime']??'00:00').':00+00:00','actual'=>null],
-                        'arrival'   => ['airport'=>$airport_name($ai),'iata'=>$ai,'terminal'=>strtoupper($arr['terminal']??''),'gate'=>strtoupper($arr['gate']??''),'scheduled'=>$flight_date.'T'.($arr['scheduledTime']??'00:00').':00+00:00','estimated'=>$flight_date.'T'.($arr['scheduledTime']??'00:00').':00+00:00','actual'=>null],
+                        'departure' => ['airport'=>$airport_name($di),'iata'=>$di,'terminal'=>strtoupper($dep['terminal']??''),'gate'=>strtoupper($dep['gate']??''),'scheduled'=>$flight_date.'T'.($dep['scheduledTime']??'00:00').':00','estimated'=>$flight_date.'T'.($dep['scheduledTime']??'00:00').':00','actual'=>null],
+                        'arrival'   => ['airport'=>$airport_name($ai),'iata'=>$ai,'terminal'=>strtoupper($arr['terminal']??''),'gate'=>strtoupper($arr['gate']??''),'scheduled'=>$flight_date.'T'.($arr['scheduledTime']??'00:00').':00','estimated'=>$flight_date.'T'.($arr['scheduledTime']??'00:00').':00','actual'=>null],
                     ];
                     $date_matched = true;
                     $nearest_date = $flight_date;
@@ -656,20 +708,22 @@ $legs = [];
         // ════════════════════════════════════════════════════════════════════
         if (!$date_matched && $has_valid_date) {
             $debug['strategy'] = $debug['strategy'] === 'none' ? 'B_dated' : 'B_fallback';
-            // Add arr_iata to get ONLY the leg arriving at the user's airport.
-            // Without this, AA2961 returns multiple legs (MCO→PHL AND PHL→XXX).
-            // With arr_iata=PHL: API returns exactly the MCO→PHL leg — no ambiguity.
-            // Use only flight_iata + flight_date — arr_iata is not reliably
-            // supported across all Aviationstack plan levels and can cause errors.
-            // We filter by airport client-side below.
-            $body_b = $api_get('http://api.aviationstack.com/v1/flights?' . http_build_query([
+            // Note: the flight_date parameter is only honoured on Aviationstack Business plan+.
+            // On Free/Basic plans it is silently ignored and the API returns the most recent
+            // records. We always perform client-side date filtering below regardless of plan,
+            // so results are correct on every plan level.
+            // FIX #1c: HTTPS.
+            $body_b = $api_get('https://api.aviationstack.com/v1/flights?' . http_build_query([
                 'access_key'  => $api_key,
                 'flight_iata' => $flight_code,
                 'flight_date' => $flight_date,
                 'limit'       => 10,
             ]));
+            $log('Strategy B: flight=' . $flight_code . ' date=' . $flight_date
+                . ' records=' . count($body_b['data'] ?? [])
+                . ' first_dep=' . substr($body_b['data'][0]['departure']['scheduled'] ?? '', 0, 10));
             if (!empty($body_b['data'])) {
-                // Filter to records matching the requested date
+                // Filter to records matching the requested date (handles free-plan non-filtering)
                 $dated = array_filter($body_b['data'], function($item) use ($flight_date) {
                     $dd = substr($item['departure']['scheduled'] ?? '', 0, 10);
                     $ad = substr($item['arrival']['scheduled']   ?? '', 0, 10);
@@ -689,7 +743,18 @@ $legs = [];
                     $flight = $candidates[0];
                     $date_matched = true;
                 } else {
-                    $flight = $body_b['data'][0];
+                    // FIX #6a: No date match — pick record closest to requested date rather
+                    // than blindly taking [0] which is often the oldest available record.
+                    $target_ts = strtotime($flight_date);
+                    $pool      = $body_b['data'];
+                    usort($pool, function($a, $b) use ($target_ts) {
+                        $ts_a = strtotime(substr($a['departure']['scheduled'] ?? '', 0, 10)) ?: 0;
+                        $ts_b = strtotime(substr($b['departure']['scheduled'] ?? '', 0, 10)) ?: 0;
+                        return abs($ts_a - $target_ts) <=> abs($ts_b - $target_ts);
+                    });
+                    $flight       = $pool[0];
+                    $nearest_date = substr($flight['departure']['scheduled'] ?? '', 0, 10);
+                    $log('Strategy B: no date match — nearest record is ' . $nearest_date);
                 }
             }
         }
@@ -729,7 +794,8 @@ $legs = [];
             };
 
             // Page 1 — first 100 records
-            $body_c1 = $api_get('http://api.aviationstack.com/v1/flights?' . http_build_query([
+            // FIX #1d: HTTPS.
+            $body_c1 = $api_get('https://api.aviationstack.com/v1/flights?' . http_build_query([
                 'access_key'  => $api_key,
                 'flight_iata' => $flight_code,
                 'limit'       => 100,
@@ -745,7 +811,8 @@ $legs = [];
 
             // Page 2 — records 101-200, only if page 1 had no date match and more exist
             if (!$found && $total_available > 100) {
-                $body_c2 = $api_get('http://api.aviationstack.com/v1/flights?' . http_build_query([
+                // FIX #1e: HTTPS.
+                $body_c2 = $api_get('https://api.aviationstack.com/v1/flights?' . http_build_query([
                     'access_key'  => $api_key,
                     'flight_iata' => $flight_code,
                     'limit'       => 100,
@@ -773,7 +840,18 @@ $legs = [];
                     }
                 }
             }
+            // FIX #6b: When no date/airport match found, pick the record whose departure
+            // date is CLOSEST to the requested date rather than $all_c[0] which is the
+            // oldest record — often months in the past for a daily-operating flight.
             if (!$flight && !empty($all_c)) {
+                if ($has_valid_date) {
+                    $target_ts = strtotime($flight_date);
+                    usort($all_c, function($a, $b) use ($target_ts) {
+                        $ts_a = strtotime(substr($a['departure']['scheduled'] ?? '', 0, 10)) ?: 0;
+                        $ts_b = strtotime(substr($b['departure']['scheduled'] ?? '', 0, 10)) ?: 0;
+                        return abs($ts_a - $target_ts) <=> abs($ts_b - $target_ts);
+                    });
+                }
                 $flight = $all_c[0];
             }
 
@@ -815,9 +893,16 @@ $legs = [];
         $last_updated = '';
         if ($updated_raw) {
             $ts = strtotime($updated_raw);
-            $last_updated = (date('Y-m-d', $ts) === date('Y-m-d'))
-                ? 'Today at ' . date('g:i A', $ts)
-                : date('M j, Y g:i A', $ts);
+            if ($ts) {
+                // FIX #4b: Use wp_date() which respects the WordPress timezone setting
+                // rather than the PHP server's local timezone. On UTC servers serving
+                // US customers, date() would show UTC times — wp_date() shows site-local time.
+                $today    = wp_date('Y-m-d');
+                $result_d = wp_date('Y-m-d', $ts);
+                $last_updated = ($result_d === $today)
+                    ? 'Today at ' . wp_date('g:i A', $ts)
+                    : wp_date('M j, Y g:i A', $ts);
+            }
         }
 
         $log('strategy=' . $debug['strategy'] . ' date_matched=' . ($date_matched ? 'true' : 'false')

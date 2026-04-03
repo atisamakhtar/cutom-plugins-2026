@@ -9,7 +9,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('FGBW_VERSION', '1.7.44');
+define('FGBW_VERSION', '1.7.45');
 define('FGBW_PLUGIN_FILE', __FILE__);
 define('FGBW_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('FGBW_PLUGIN_URL', plugin_dir_url(__FILE__));
