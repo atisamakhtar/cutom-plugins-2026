@@ -274,8 +274,8 @@ private static function build_pdf( int $booking_id, array $payload, float $price
                 'box'   => false,
             ],
             [
-                'title' => 'Child Safety - Georgia Law',
-                'body'  => 'Georgia law requires children under 8 to be in a car seat or booster. We can provide child car seats and boosters on request at $30.00 each.',
+                'title' => 'Child Safety - State Law',
+                'body'  => 'State law requires children under 8 to be in a car seat or booster. We can provide child car seats and boosters on request at $30.00 each.',
                 'box'   => false,
             ],
             [
@@ -308,7 +308,7 @@ private static function build_pdf( int $booking_id, array $payload, float $price
         $page = 1;
 
         // Footer height — reserved at bottom of each page
-        $fh = 14;
+        $fh = 20;
         // Bottom safe limit — stop drawing body content here
         $bottom = $ph - $fh - 4;
 
@@ -327,11 +327,11 @@ private static function build_pdf( int $booking_id, array $payload, float $price
             $setFill( $navy );
             $pdf->Rect( 0, $fy, $pw, $ph - $fy + 1, 'F' );
             $pdf->SetFont( 'helvetica', 'B', 8 ); $setTxt( $orange );
-            $pdf->SetXY( 0, $fy + 1.5 ); $pdf->Cell( $pw, 4, 'Optimus Fleets LLC', 0, 2, 'C' );
+            $pdf->SetXY( 0, $fy + 2 ); $pdf->Cell( $pw, 4, 'Optimus Fleets LLC', 0, 2, 'C' );
             $pdf->SetFont( 'helvetica', '', 7 ); $setTxt( $orange );
-            $pdf->SetXY( 0, $fy + 6.5 ); $pdf->Cell( $pw, 4, 'www.optimusfleets.us', 0, 2, 'C' );
+            $pdf->SetXY( 0, $fy + 8 ); $pdf->Cell( $pw, 4, 'www.optimusfleets.us', 0, 2, 'C' );
             $pdf->SetFont( 'helvetica', '', 6.5 ); $setTxt( [ 156, 163, 175 ] );
-            $pdf->SetXY( 0, $fy + 11 ); $pdf->Cell( $pw, 4, '(856)-443-3401  |  Available 24/7', 0, 0, 'C' );
+            $pdf->SetXY( 0, $fy + 14 ); $pdf->Cell( $pw, 4, '(856)-443-3401  |  Available 24/7', 0, 0, 'C' );
         };
         $new_page = function() use ( $pdf, $pw, $ph, $fh, $navy, $orange, $setFill, $setTxt, $draw_footer, &$y, &$page, &$bottom ) {
             $draw_footer( $ph - $fh );
@@ -385,19 +385,73 @@ private static function build_pdf( int $booking_id, array $payload, float $price
 
         // ── HEADER ────────────────────────────────────────────────────────────
         $setFill( $navy ); $pdf->Rect( 0, 0, $pw, 22, 'F' );
+        // ── Header: text LEFT, logo RIGHT ──────────────────────────────────
+        // Header bar is 22mm tall. Logo is placed at top-right, vertically
+        // centred (approx 2mm top padding). Logo width = 30mm, auto height.
         $logo_path = FGBW_PLUGIN_DIR . 'assets/images/email-logo.png';
-        $logo_ok   = false;
-        if ( file_exists( $logo_path ) ) {
-            try { $pdf->Image( $logo_path, $lm, 2, 26, 0 ); $logo_ok = true; } catch ( \Throwable $e ) {}
-        }
-        // Logo on left, text always starts at $lm (left-aligned)
-        $text_x = $logo_ok ? $lm + 29 : $lm;
+        $logo_w    = 30;   // mm — display width of logo in header
+        $logo_x    = $pw - $rm - $logo_w;   // right-aligned to right margin
+
+        // Draw company name and tagline on the LEFT
         $pdf->SetFont( 'helvetica', 'B', 14 ); $setTxt( [ 255, 255, 255 ] );
         $pdf->SetXY( $lm, 4 );
-        $pdf->Cell( $pw - ( $lm * 2 ), 8, 'OPTIMUS FLEETS LLC', 0, 0, 'L' );
+        $pdf->Cell( $pw - $lm - $rm - $logo_w - 4, 8, 'OPTIMUS FLEETS LLC', 0, 0, 'L' );
         $pdf->SetFont( 'helvetica', '', 7.5 ); $setTxt( $orange );
         $pdf->SetXY( $lm, 13 );
-        $pdf->Cell( $pw - ( $lm * 2 ), 5, 'LUXURY LIMO / CHARTER SERVICES', 0, 0, 'L' );
+        $pdf->Cell( $pw - $lm - $rm - $logo_w - 4, 5, 'LUXURY LIMO / CHARTER SERVICES', 0, 0, 'L' );
+
+        // Draw logo on the RIGHT ─────────────────────────────────────────────
+        // The source PNG has a transparent background. FPDF flattens transparency
+        // to white, making the logo invisible on the dark navy header.
+        // Fix: use GD to composite the logo onto a navy-coloured canvas and save
+        // a temporary JPEG (no transparency), then embed that instead.
+        if ( file_exists( $logo_path ) ) {
+            try {
+                $logo_embed = $logo_path; // fallback — use original PNG
+
+                if ( function_exists( 'imagecreatefrompng' ) && function_exists( 'imagecreatefromstring' ) ) {
+                    $src = @imagecreatefrompng( $logo_path );
+                    if ( $src ) {
+                        $sw = imagesx( $src );
+                        $sh = imagesy( $src );
+
+                        // Create navy background canvas same size as source image
+                        $canvas = imagecreatetruecolor( $sw, $sh );
+                        // Navy colour: #0f172a = R15 G23 B42
+                        $bg = imagecolorallocate( $canvas, 15, 23, 42 );
+                        imagefill( $canvas, 0, 0, $bg );
+
+                        // Composite the PNG (with alpha) onto the navy canvas
+                        imagecopy( $canvas, $src, 0, 0, 0, 0, $sw, $sh );
+
+                        // Save as JPEG to a temp file in the PDF upload dir
+                        $tmp_jpg = self::$upload_dir . '/logo_tmp_' . $booking_id . '.jpg';
+                        imagejpeg( $canvas, $tmp_jpg, 95 );
+                        imagedestroy( $src );
+                        imagedestroy( $canvas );
+
+                        if ( file_exists( $tmp_jpg ) ) {
+                            $logo_embed = $tmp_jpg;
+                        }
+                    }
+                }
+
+                // Vertically centre in 22mm header — logo ~14mm tall → y=4mm
+                $pdf->Image( $logo_embed, $logo_x, 4, $logo_w, 0 );
+                error_log( '[FGBW PDF] Logo rendered at x=' . $logo_x . ' w=' . $logo_w . ' src=' . basename( $logo_embed ) );
+
+                // Clean up temp JPEG after PDF is built (done after Output() in generate())
+                if ( isset( $tmp_jpg ) && file_exists( $tmp_jpg ) ) {
+                    @unlink( $tmp_jpg );
+                }
+
+            } catch ( \Throwable $e ) {
+                error_log( '[FGBW PDF] Logo render failed: ' . $e->getMessage() );
+            }
+        } else {
+            error_log( '[FGBW PDF] Logo file not found: ' . $logo_path );
+        }
+
         $y = 22;
 
         // Orange rule
@@ -477,7 +531,27 @@ private static function build_pdf( int $booking_id, array $payload, float $price
             if ( isset( $ret_rows[$i] ) ) $h_r = $detail_row( $ret_rows[$i][0], $ret_rows[$i][1], $rx2, $ry, $col_w, $alt );
             $y += max( $h_o, $h_r );
         }
-        $y += 1;
+        // tighten spacing, no extra gap after routing table
+
+        // ── Charges & Fees box under RETURN column
+        $fee_box_x = $rx2;
+        $fee_box_w = $col_w;
+
+        // Heading row (same background as OUTBOUND heading)
+        $pdf->SetFillColor( 30, 41, 59 );
+        $pdf->Rect( $fee_box_x, $y, $fee_box_w, 7.5, 'F' );
+        $pdf->SetFont( 'helvetica', 'B', 8 ); $setTxt( [ 255, 255, 255 ] );
+        $pdf->SetXY( $fee_box_x + 2, $y + 1.5 );
+        $pdf->Cell( $fee_box_w - 4, 5, 'CHARGES & FEES', 0, 0, 'L' );
+
+        $y += 7.5;
+
+        // Two-row empty content body with border
+        $body_h = 6; // one row of 6mm
+        $pdf->SetDrawColor( 160, 160, 160 );
+        $pdf->Rect( $fee_box_x, $y, $fee_box_w, $body_h );
+
+        $y += $body_h;
 
         // ── Check if agreement fits on same page, only add page if truly needed
         // Remaining space on page 1 after routing table
@@ -548,10 +622,6 @@ private static function build_pdf( int $booking_id, array $payload, float $price
         $pdf->Cell( 46, 5, 'Authorized Signature:', 0, 0, 'L' );
         $pdf->SetDrawColor( 160, 160, 160 );
         $pdf->Line( $lm + 46, $y + 4, $lm + 90, $y + 4 );   // signature blank
-
-        $pdf->SetXY( $lm + 95, $y );
-        $pdf->Cell( 14, 5, 'Price:', 0, 0, 'L' );
-        $pdf->Line( $lm + 109, $y + 4, $lm + 140, $y + 4 );  // price blank
 
         $pdf->SetXY( $lm + 145, $y );
         $pdf->Cell( 10, 5, 'Date:', 0, 0, 'L' );

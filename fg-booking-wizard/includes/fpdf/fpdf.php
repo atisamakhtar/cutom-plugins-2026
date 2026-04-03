@@ -411,7 +411,7 @@ protected function _putfonts()
         $this->_out('<</Type /Font /Subtype /Type1 /BaseFont /'.$font['name'].' /Encoding /WinAnsiEncoding>>');$this->_out('endobj');
     }
 }
-protected function _putimages(){foreach($this->images as $file=>$info){$this->_putimage($info);unset($this->images[$file]['data'],$this->images[$file]['smask']);}}
+protected function _putimages(){foreach($this->images as $file=>&$info){$this->_putimage($info);unset($info['data'],$info['smask']);}unset($info);}
 protected function _putimage(&$info)
 {
     $this->_newobj();$info['n']=$this->n;
